@@ -1,0 +1,29 @@
+AMS CAN Bus API 
+
+Use Standard packets
+Return Values in bytes to be converted back properly 
+Max Packet Length is 8 Bytes 
+
+all nodes have 
+- Query what you are
+- set streaming mode On/Off
+- query stream mode 
+- get current sensor state 
+
+System Wide 
+
+Broadcast Queries 
+- Discovery Mode 
+
+
+Sensor Types 
+- Current (Amps) Range +/- 999.9 = 2 bytes
+- Temp (Degrees F/C) Range +/- 999.9 = 2 bytes
+- Voltage (V) Range 0-99.9 = 2 bytes
+- Pressure (PSI/KPa) Range 0-999.9 = 2 bytes
+- Vacuum (HGin/KPa)  Range +/- 30 HGin = 2 bytes
+- Input/Output (Bool True/False)
+
+
+
+
