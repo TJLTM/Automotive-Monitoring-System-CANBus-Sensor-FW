@@ -1,0 +1,4 @@
+LED for Error display
+Programming/Serial Header TTL level
+Addressing Set via Serial Port
+
