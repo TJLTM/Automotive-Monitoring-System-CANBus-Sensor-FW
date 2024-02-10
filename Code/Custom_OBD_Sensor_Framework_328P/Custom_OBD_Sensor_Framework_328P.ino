@@ -2,15 +2,16 @@
 #include <CAN.h>
 
 bool Streaming;
-char Units;
+char UnitSystem;
 long PacingTimer;
 long PacingTime;
 int DeviceType = 0;
+int Units = 0;
 
 #define ErrorLEDpin 3
 int ErrorNumber = 0;
 
-int PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 +  EEPROM.read(0);
+int PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 + EEPROM.read(0);
 
 void setup() {
   Serial.begin(9600);
@@ -18,7 +19,7 @@ void setup() {
   digitalWrite(ErrorLEDpin, HIGH);
   delay(250);
   digitalWrite(ErrorLEDpin, LOW);
-  
+
 
   Serial.print("CAN Address: ");
   Serial.println(PacketIdentifer);
@@ -38,8 +39,7 @@ void setup() {
   TempValue = EEPROM.read(4);
   if (TempValue == "I" || TempValue == "M") {
     Units = TempValue;
-  }
-  else {
+  } else {
     Units = "I";
     EEPROM.update(0, "I");
   }
@@ -48,8 +48,7 @@ void setup() {
   TempValue = EEPROM.read(5);
   if (TempValue == 0 || TempValue == 1) {
     Streaming = TempValue;
-  }
-  else {
+  } else {
     Streaming = 1;
     EEPROM.update(1, 1);
   }
@@ -58,8 +57,7 @@ void setup() {
   TempValue = EEPROM.read(6) << 8 || EEPROM.read(7);
   if (TempValue >= 0 && TempValue <= 65535) {
     PacingTime = TempValue;
-  }
-  else {
+  } else {
     PacingTime = 0;
     EEPROM.update(6, 0);
     EEPROM.update(7, 0);
@@ -73,7 +71,6 @@ void setup() {
 
   Serial.print("Pacing:");
   Serial.println(PacingTime);
-
 }
 
 void loop() {
@@ -86,26 +83,30 @@ void loop() {
       delay(500);
     }
     delay(1000);
-  }
-  else {
+  } else {
     //if no error run the main program
     long CurrentTime = millis();
     if (Streaming == true) {
       if (PacingTime != 0) {
         if (abs(PacingTimer - CurrentTime) > PacingTime) {
-          StatusResponse();
+          //StatusResponse();
           PacingTimer = CurrentTime;
         }
-      }
-      else {
-        StatusResponse();
+      } else {
+        //StatusResponse();
       }
     }
   }
-
 }
 
 void onReceive(int packetSize) {
+  /*
+
+  :param packetSize: CAN packet size
+  :type packetSize: int
+  :return: None
+  :rtype: None
+    */
   bool RTR = CAN.packetRtr();
   int ID = CAN.packetId();
   byte RXData[packetSize];
@@ -117,35 +118,39 @@ void onReceive(int packetSize) {
 
   //Discovery
 
-  if (RXData[2] == "?" && RXData[2] == 0x01) { // Handle the Discovery Packet
+  if (RXData[2] == "?" && RXData[2] == 0x01) {  // Handle the Discovery Packet
     DiscoveryResponse(RXData[0]);
   }
 
   //Check Device Address
-  byte TargetDeviceAddress =  RXData[0] << 8 + RXData[1];
+  byte TargetDeviceAddress = RXData[0] << 8 + RXData[1];
 
   if (TargetDeviceAddress == PacketIdentifer) {
 
-    if (RXData[2] == "?") { // check if the packet is a Query
+    if (RXData[2] == "?") {  // check if the packet is a Query
 
       //Streaming
       //Pacing
-      //Units
+      //Unit System
       //Unit ABR
 
-    } else if (RXData[2] == "S") {// check if the packet is a Set
+    } else if (RXData[2] == "S") {  // check if the packet is a Set
       //Streaming
       //Pacing
-      //Units
+      //Unit System
       //Unit ABR
     }
   }
 }
 
-
-
-
 void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
   CAN.beginPacket(PacketIdentifer, NumberOfBytes, RequestResponse);
 
   for (uint8_t Index = 0; Index < NumberOfBytes; Index++) {
@@ -155,118 +160,179 @@ void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
   CAN.endPacket();
 }
 
-float ReadSensors() {
-  float Value = 0;
+void SendSerial(String Data){
+  /*
+
+  :param Data: String to be sent out of the Serial Port
+  :type Data: String
+  :return: None
+  :rtype: None
+    */
+  Serial.println(Data);
+}
+
+int ReadSensors() {
+  int Value = 0;
 
 
   return Value;
 }
 
-void StatusResponse(int ReplyToAddress) {
-  int ChannelNumber = 0;
-  float ReturnedValue = ReadSensors();
-  byte DataPacket[] = {highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x02, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType)};
-  CANBusSend(7, false, DataPacket);
-}
-
 void DiscoveryResponse(int ReplyToAddress) {
-  byte DataPacket[] = {highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x01, byte(DeviceType),byte(DeviceType),byte(DeviceType)};
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x01, byte(DeviceType), byte(DeviceType), byte(DeviceType) };
   CANBusSend(7, false, DataPacket);
 }
 
-void StreamingModeResponse() {
-  byte DataPacket[] = {highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(Streaming)};
+void StatusResponse(int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  int ChannelNumber = 0;
+  int ReturnedValue = ReadSensors();
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x02, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType) };
+  if (ReplyToAddress !=-1){CANBusSend(7, false, DataPacket);}
+  else {SendSerial("some data");}
+  
+}
+
+void StreamingModeResponse(int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(Streaming) };
   CANBusSend(5, false, DataPacket);
 }
 
-void StreamingModeSet(bool Data) {
+void StreamingModeSet(bool Data, int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
   if (Data == true || Data == false) {
     EEPROM.update(1, Data);
     Streaming = Data;
   }
-  StreamingModeResponse();
+  StreamingModeResponse(ReplyToAddress);
 }
 
-void PacingResponse() {
-  byte DataPacket[] = {highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("C"), highByte(PacingTime), lowByte(PacingTime)};
+void PacingResponse(int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("C"), highByte(PacingTime), lowByte(PacingTime) };
   CANBusSend(6, false, DataPacket);
 }
 
-void PacingSet(int Data) {
+void PacingSet(int Data, int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
   if (Data >= 0 && Data <= 65535) {
     EEPROM.update(2, highByte(Data));
     EEPROM.update(3, lowByte(Data));
     PacingTime = Data;
   }
-  PacingResponse();
+  PacingResponse(ReplyToAddress);
 }
 
-void UnitsResponse() {
-  byte DataPacket[] = {highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("N"), byte("T"), byte(Units)};
+void UnitsSystemResponse(int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), byte(5), byte(Units) };
   CANBusSend(5, false, DataPacket);
 }
 
-void UnitsSet(char Data) {
+void UnitsSystemSet(char Data, int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+
   if (Data == "I" || Data == "M") {
     EEPROM.update(0, Data);
   }
-  UnitsResponse();
+  UnitsSystemResponse(ReplyToAddress);
 }
 
-void UnitsABRResponse() {
-  byte ABR[] = {0, 0, 0, 0};
+void UnitsABRResponse(int ReplyToAddress = -1) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  byte ABR = 0x00;
   switch (DeviceType) {
-    case 1: // Current
-      ABR[3] = byte("A");
+    case 1:  // Current
+      ABR = 0x01;
       break;
-    case 2: // Temp
+    case 2:  // Temp
       if (Units == "I") {
-        ABR[3] = byte("F");
-      }
-      else {
-        ABR[3] = byte("C");
+        ABR = 0x03;
+      } else {
+        ABR = 0x02;
       }
       break;
-    case 3: // Voltage
-      ABR[3] = byte("V");
+    case 3:  // Voltage
+      ABR = 0x04;
       break;
-    case 4: // Pressure
+    case 4:  // Pressure
       if (Units == "I") {
-        ABR[1] = byte("P");
-        ABR[2] = byte("S");
-        ABR[3] = byte("I");
-      }
-      else {
-        ABR[1] = byte("K");
-        ABR[2] = byte("P");
-        ABR[3] = byte("A");
+        ABR = 0x06;
+      } else {
+        ABR = 0x05;
       }
       break;
-    case 5: // Vacuum
+    case 5:  // Vacuum
       if (Units == "I") {
-        ABR[0] = byte("I");
-        ABR[1] = byte("N");
-        ABR[2] = byte("H");
-        ABR[3] = byte("G");
-      }
-      else {
-        ABR[1] = byte("K");
-        ABR[2] = byte("P");
-        ABR[3] = byte("A");
+        ABR = 0x08;
+      } else {
+        ABR = 0x07;
       }
       break;
-    case 6: // I/O
-      ABR[0] = byte("B");
-      ABR[1] = byte("O");
-      ABR[2] = byte("O");
-      ABR[3] = byte("L");
+    case 6:  // I/O
+      ABR = 0x09;
       break;
-    case 7: // RPM
-      ABR[1] = byte("R");
-      ABR[2] = byte("P");
-      ABR[3] =  byte("A");
+    case 7:  // RPM
+      ABR = 0x0A;
       break;
   }
 
-  CANBusSend(4, false, ABR);
+  CANBusSend(2, false, ABR);
 }
