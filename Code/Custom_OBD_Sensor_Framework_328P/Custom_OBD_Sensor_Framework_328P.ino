@@ -8,26 +8,38 @@ long PacingTime;
 int DeviceType = 0;
 int Units = 0;
 
+#define ComPort Serial
+
+const char* AcceptedCommands[] = {"UNITS?", "ERROR?", "STREAMING?", "UNITSYSTEM?", "STATE?", "RESETERROR",
+                             "REBOOT",
+                           };
+const char* ParameterCommands[] = {"SETUNITSYSTEM", "SETSTREAMING", "SETPACINGTIME", "SETDEVICEADDRESS",
+                            };
+
+
+String inputString = "";         // a String to hold incoming data from ports
+bool stringComplete = false;     // whether the string is complete for each respective port
+
 #define ErrorLEDpin 3
 int ErrorNumber = 0;
 
 int PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 + EEPROM.read(0);
 
 void setup() {
-  Serial.begin(9600);
+  ComPort.begin(9600);
   pinMode(ErrorLEDpin, OUTPUT);
   digitalWrite(ErrorLEDpin, HIGH);
   delay(250);
   digitalWrite(ErrorLEDpin, LOW);
 
 
-  Serial.print("CAN Address: ");
-  Serial.println(PacketIdentifer);
+  ComPort.print("CAN Address: ");
+  ComPort.println(PacketIdentifer);
 
   // Setup CAN Bus
   CAN.setPins(9, 2);
   if (!CAN.begin(500E3)) {
-    Serial.println("Starting CAN failed!");
+    ComPort.println("Starting CAN failed!");
     ErrorNumber = 2;
   }
 
@@ -63,14 +75,44 @@ void setup() {
     EEPROM.update(7, 0);
   }
 
-  Serial.print("Units:");
-  Serial.println(Units);
+  ComPort.print("Units:");
+  ComPort.println(Units);
 
-  Serial.print("Streaming:");
-  Serial.println(Streaming);
+  ComPort.print("Streaming:");
+  ComPort.println(Streaming);
 
-  Serial.print("Pacing:");
-  Serial.println(PacingTime);
+  ComPort.print("Pacing:");
+  ComPort.println(PacingTime);
+}
+
+void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
+  /*
+
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
+  :return: None
+  :rtype: None
+    */
+  CAN.beginPacket(PacketIdentifer, NumberOfBytes, RequestResponse);
+
+  for (uint8_t Index = 0; Index < NumberOfBytes; Index++) {
+    CAN.write(Data[Index]);
+  }
+
+  CAN.endPacket();
+}
+
+void SendSerial(String Data, bool CR = true) {
+  /*
+
+  :param Data: String to be sent out of the Serial Port
+  :type Data: String
+  :return: None
+  :rtype: None
+    */
+  if (CR == true) {ComPort.println(Data);}
+  else{ComPort.print(Data);}
+
 }
 
 void loop() {
@@ -97,17 +139,36 @@ void loop() {
       }
     }
   }
+
+  serialEvent();
+  if (stringComplete) {
+    //inputString = PainlessInstructionSet(inputString, 0);
+    stringComplete = false;
+  }
+
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a carriage return, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\r') {
+      stringComplete = true;
+    }
+  }
 }
 
 void onReceive(int packetSize) {
   /*
-
   :param packetSize: CAN packet size
   :type packetSize: int
   :return: None
   :rtype: None
     */
-  bool RTR = CAN.packetRtr();
   int ID = CAN.packetId();
   byte RXData[packetSize];
 
@@ -125,62 +186,67 @@ void onReceive(int packetSize) {
   //Check Device Address
   byte TargetDeviceAddress = RXData[0] << 8 + RXData[1];
 
+
   if (TargetDeviceAddress == PacketIdentifer) {
+    int ReplyDeviceAddress = 0;  // need to get this out of the packet TODO
 
     if (RXData[2] == "?") {  // check if the packet is a Query
-
-      //Streaming
-      //Pacing
-      //Unit System
-      //Unit ABR
+      switch (RXData[2]) {
+        case 0x02:
+          //Status
+          StatusResponse(ReplyDeviceAddress);
+          break;
+        case 0x03:
+          // Streaming Mode
+          StreamingModeResponse(ReplyDeviceAddress);
+          break;
+        case 0x04:
+          // Pacing
+          PacingResponse(ReplyDeviceAddress);
+          break;
+        case 0x05:
+          // Units
+          UnitsSystemResponse(ReplyDeviceAddress);
+          break;
+        case 0x06:
+          // i/o
+          break;
+        default:
+          // return Error that this command isn't supported
+          break;
+      }
 
     } else if (RXData[2] == "S") {  // check if the packet is a Set
-      //Streaming
-      //Pacing
-      //Unit System
-      //Unit ABR
+      switch (RXData[2]) {
+        case 0x03:
+          // Streaming Mode
+          StreamingModeResponse(ReplyDeviceAddress);
+          break;
+        case 0x04:
+          // Pacing
+          PacingResponse(ReplyDeviceAddress);
+          break;
+        case 0x05:
+          // Units
+          UnitsSystemResponse(ReplyDeviceAddress);
+          break;
+        case 0x06:
+          // i/o
+          break;
+        case 0x08:
+          // Unit ABR
+          UnitsABRResponse(ReplyDeviceAddress);
+          break;
+        default:
+          // return Error that this command isn't supported
+          break;
+      }
     }
   }
 }
 
-void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
-  /*
-
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
-  CAN.beginPacket(PacketIdentifer, NumberOfBytes, RequestResponse);
-
-  for (uint8_t Index = 0; Index < NumberOfBytes; Index++) {
-    CAN.write(Data[Index]);
-  }
-
-  CAN.endPacket();
-}
-
-void SendSerial(String Data){
-  /*
-
-  :param Data: String to be sent out of the Serial Port
-  :type Data: String
-  :return: None
-  :rtype: None
-    */
-  Serial.println(Data);
-}
-
-int ReadSensors() {
-  int Value = 0;
-
-
-  return Value;
-}
-
 void DiscoveryResponse(int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header
   :type ReplyToAddress: int
   :return: None
@@ -190,37 +256,35 @@ void DiscoveryResponse(int ReplyToAddress) {
   CANBusSend(7, false, DataPacket);
 }
 
-void StatusResponse(int ReplyToAddress = -1) {
+void StatusResponse(int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
   :rtype: None
     */
   int ChannelNumber = 0;
-  int ReturnedValue = ReadSensors();
+  int ReturnedValue = 0;
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x02, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType) };
   if (ReplyToAddress !=-1){CANBusSend(7, false, DataPacket);}
-  else {SendSerial("some data");}
+  else {SendSerial("StatusResponse:0x02:" + String(ReturnedValue) + ":" + String(DeviceType));}
   
 }
 
-void StreamingModeResponse(int ReplyToAddress = -1) {
+void StreamingModeResponse(int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
   :rtype: None
     */
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(Streaming) };
-  CANBusSend(5, false, DataPacket);
+  if (ReplyToAddress !=-1){CANBusSend(5, false, DataPacket);}
+  else {SendSerial("StreamingMode:0x03:" + String(Streaming));}
 }
 
-void StreamingModeSet(bool Data, int ReplyToAddress = -1) {
+void StreamingModeSet(bool Data, int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
@@ -233,21 +297,20 @@ void StreamingModeSet(bool Data, int ReplyToAddress = -1) {
   StreamingModeResponse(ReplyToAddress);
 }
 
-void PacingResponse(int ReplyToAddress = -1) {
+void PacingResponse(int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
   :rtype: None
     */
-  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("C"), highByte(PacingTime), lowByte(PacingTime) };
-  CANBusSend(6, false, DataPacket);
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04 ,highByte(PacingTime), lowByte(PacingTime) };
+  if (ReplyToAddress !=-1){CANBusSend(6, false, DataPacket);}
+  else {SendSerial("Pacing:0x04:" + String(PacingTime));}
 }
 
-void PacingSet(int Data, int ReplyToAddress = -1) {
+void PacingSet(int Data, int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
@@ -261,22 +324,21 @@ void PacingSet(int Data, int ReplyToAddress = -1) {
   PacingResponse(ReplyToAddress);
 }
 
-void UnitsSystemResponse(int ReplyToAddress = -1) {
+void UnitsSystemResponse(int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
   :rtype: None
     */
 
-  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), byte(5), byte(Units) };
-  CANBusSend(5, false, DataPacket);
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(Units) };
+  if (ReplyToAddress !=-1){CANBusSend(5, false, DataPacket);}
+  else {SendSerial("UnitsSystem:0x05:" + Units);}
 }
 
-void UnitsSystemSet(char Data, int ReplyToAddress = -1) {
+void UnitsSystemSet(char Data, int ReplyToAddress) {
   /*
-
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
   :type ReplyToAddress: int
   :return: None
@@ -289,7 +351,7 @@ void UnitsSystemSet(char Data, int ReplyToAddress = -1) {
   UnitsSystemResponse(ReplyToAddress);
 }
 
-void UnitsABRResponse(int ReplyToAddress = -1) {
+void UnitsABRResponse(int ReplyToAddress) {
   /*
 
   :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
@@ -334,5 +396,161 @@ void UnitsABRResponse(int ReplyToAddress = -1) {
       break;
   }
 
-  CANBusSend(2, false, ABR);
+  if (ReplyToAddress !=-1){CANBusSend(2, false, ABR);}
+  else {SendSerial("UnitABR:0x08:" + String(ABR));}
 }
+
+/*
+  SCC = start command character
+  case 1 - no SCC found and there is data in the buffer - dump the buffer
+  case 2 - SCC is found and not at position 0 - trim the buffer up to the SCC and insert error
+  case 3 - SCC is found and at position 0  - process command
+  case 4 - SCC is found and no delimiter found and there is data in the buffer  - add back to the buffer
+  case 5 - SCC is found no delimiter found and another scc is found trim up to the second
+  case 6 - No SCC and No Delimiter and there is data in teh buffer - dump the buffer
+  case 7 - Valid SSC and Delimiter is found but the command is not in the list of commands - tell the user
+*/
+
+String PainlessInstructionSet(String & TestString) {
+  int Search = 1;
+  while (Search == 1) {
+    bool ParamCommandCalled = false;
+    bool CommandCalled = false;
+    int FindStart = TestString.indexOf('%');
+    int Param = TestString.indexOf('*');
+    int FindEnd = TestString.indexOf('\r');
+    if (TestString != "") {
+      if (FindStart != -1) { //case 1
+        if (FindStart != 0) { //case 2
+          //Serial.println("PIS Case 2");
+          SendSerial("%R,Error,BAD Command Format No Start or Stop Delimiters");
+          TestString.remove(0, FindStart);
+        }
+        else { //Case 3 & Case 5 & Case 4
+          String Case5Test = TestString.substring(FindStart + 1);
+          int FindStart1 = Case5Test.indexOf('%');
+          int FindEnd1 = Case5Test.indexOf('\r');
+          if ((FindEnd1 > FindStart1) && (FindStart1 != -1)) {
+            SendSerial("%R,Error,BAD Command Format - No End Delimiter");
+            //Serial.println("PIS Case 5");
+            TestString.remove(0, FindStart1 + 1);
+          }
+          else {
+            if (FindEnd != -1 || FindEnd1 != -1) {
+              //Serial.println("PIS Case 3");
+              String CommandCandidate = TestString.substring(FindStart + 1, FindEnd);
+              CommandCandidate.toUpperCase();
+              if ((Param < FindEnd) && Param != -1) {
+                for (int i = 0; i < (sizeof(ParameterCommands) / sizeof(int)); i++)
+                {
+                  //Serial.println("PIS Case 3A");
+                  String ParamHeader = CommandCandidate.substring(FindStart, Param - 1);
+                  ParamHeader.toUpperCase();
+                  if (ParamHeader == ParameterCommands[i]) {
+                    ParamCommandToCall(i, CommandCandidate);
+                    ParamCommandCalled = true;
+                  }
+                }
+              }
+              else {
+                for (int i = 0; i < (sizeof(AcceptedCommands) / sizeof(int)); i++)
+                {
+                  //Non Parameter Commands
+                  if (CommandCandidate == AcceptedCommands[i]) {
+                    //Serial.println("PIS Case 3B");
+                    CommandToCall(i);
+                    CommandCalled = true;
+                  }
+                }
+              }
+              if (CommandCalled == false && ParamCommandCalled == false) {
+                //Serial.println("PIS Case 7");
+                SendSerial("%R,Error,Command not recognized");
+              }
+              TestString.remove(0, FindEnd + 1);
+            }
+            else {
+              //Serial.println("PIS Case 4");
+              Search = 0;
+            }
+          }
+        }
+      }
+      else { //Case 1 Dump the buffer if ther is no start character is found
+        //Serial.println("PIS Case 1");
+        Search = 0;
+        TestString = "";
+        SendSerial("%R,Error,BAD Command Format - No Start Command Character");
+      }
+    }//if TestString is empty
+    else { //Exit Search While if Buffer is empty
+      Search = 0;
+      //Serial.println("PIS Case 6");
+    }
+  }//End of Search While
+  return TestString;
+}//End of PIS Function
+
+void ParamCommandToCall(int Index, String CommandRaw) {
+  switch (Index)
+  {
+    case 0:
+      //SETUNITSYSTEM
+      if (CommandRaw == "I" || CommandRaw == "M"){
+        UnitsSystemSet(CommandRaw,-1);
+      }else{
+        SendSerial("%R,Error,Invalid Parameter, I or M");
+      }
+      
+      break;
+    case 1:
+      //SETSTREAMING
+      if (CommandRaw == "0" || CommandRaw == "1"){
+        StreamingModeSet(CommandRaw,-1);
+      }else{
+        SendSerial("%R,Error,Invalid Parameter, 0 or 1");
+      }
+      break;
+    case 2:
+      //SETPACINGTIME
+      PacingSet(CommandRaw, -1);
+      break;
+    case 3:
+      //SETDEVICEADDRESS
+      SetStreamingData(CommandRaw, -1);
+      break;
+  }
+}
+
+void CommandToCall(int Index) {
+  switch (Index)
+  {
+    case 0:
+      //UNITS?
+      UnitsABRResponse(-1);
+      break;
+    case 1:
+      //ERROR?
+      GetDeviceInfo(-1);
+      break;
+    case 2:
+      //STREAMING?
+      StreamingModeResponse(-1);
+      break;
+    case 3:
+      //UNITSYSTEM?
+      UnitsSystemResponse(-1);
+      break;
+    case 4:
+      //STATE?
+      StatusResponse(-1);
+      break;
+    case 5:
+      //RESETERROR
+      //ErrorReset(-1);
+      break;
+    case 6:
+      //REBOOT
+      //RebootDevice(-1);
+      break;
+  }
