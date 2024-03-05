@@ -23,7 +23,7 @@ bool stringComplete = false;     // whether the string is complete for each resp
 #define ErrorLEDpin 3
 int ErrorNumber = 0;
 
-int PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 + EEPROM.read(0);
+int PacketIdentifer = 0;
 
 void setup() {
   ComPort.begin(9600);
@@ -32,7 +32,7 @@ void setup() {
   delay(250);
   digitalWrite(ErrorLEDpin, LOW);
 
-
+  GetDeviceAddressFromMemory(); 
   ComPort.print("CAN Address: ");
   ComPort.println(PacketIdentifer);
 
@@ -102,6 +102,32 @@ void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
   CAN.endPacket();
 }
 
+void GetDeviceAddressFromMemory(){
+  PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 + EEPROM.read(0);
+}
+
+void RebootDevice(){
+
+}
+
+void SetError(int Number){
+switch (Number)
+  {
+    case 1:
+      ErrorNumber = 1; 
+      break;
+  }
+}
+
+int GetError(int ReplyToAddress){
+  return ErrorNumber;
+}
+
+void ResetError(){
+
+}
+
+
 void SendSerial(String Data, bool CR = true) {
   /*
 
@@ -162,6 +188,14 @@ void serialEvent() {
   }
 }
 
+void SetDeviceAddress(int Address){
+  if (Address >= 0 && Address <= 2047){
+
+  }else{
+    SendSerial("Address must be between 0 and 2047");
+  }
+}
+
 void onReceive(int packetSize) {
   /*
   :param packetSize: CAN packet size
@@ -171,77 +205,80 @@ void onReceive(int packetSize) {
     */
   int ID = CAN.packetId();
   byte RXData[packetSize];
+  if (ID != PacketIdentifer){
+    if (CAN.available()) {
+      for (uint8_t Index = 0; Index < packetSize; Index++)
+        RXData[Index] = CAN.read();
+    }
 
-  if (CAN.available()) {
-    for (uint8_t Index = 0; Index < packetSize; Index++)
-      RXData[Index] = CAN.read();
-  }
+    //Discovery
 
-  //Discovery
+    if (RXData[2] == "?" && RXData[2] == 0x01) {  // Handle the Discovery Packet
+      DiscoveryResponse(RXData[0]);
+    }
 
-  if (RXData[2] == "?" && RXData[2] == 0x01) {  // Handle the Discovery Packet
-    DiscoveryResponse(RXData[0]);
-  }
-
-  //Check Device Address
-  byte TargetDeviceAddress = RXData[0] << 8 + RXData[1];
+    //Check Device Address
+    byte TargetDeviceAddress = RXData[0] << 8 + RXData[1];
 
 
-  if (TargetDeviceAddress == PacketIdentifer) {
-    int ReplyDeviceAddress = 0;  // need to get this out of the packet TODO
+    if (TargetDeviceAddress == PacketIdentifer) {
+      int ReplyDeviceAddress = 0;  // need to get this out of the packet TODO
 
-    if (RXData[2] == "?") {  // check if the packet is a Query
-      switch (RXData[2]) {
-        case 0x02:
-          //Status
-          StatusResponse(ReplyDeviceAddress);
-          break;
-        case 0x03:
-          // Streaming Mode
-          StreamingModeResponse(ReplyDeviceAddress);
-          break;
-        case 0x04:
-          // Pacing
-          PacingResponse(ReplyDeviceAddress);
-          break;
-        case 0x05:
-          // Units
-          UnitsSystemResponse(ReplyDeviceAddress);
-          break;
-        case 0x06:
-          // i/o
-          break;
-        default:
-          // return Error that this command isn't supported
-          break;
-      }
+      if (RXData[2] == "?") {  // check if the packet is a Query
+        switch (RXData[2]) {
+          case 0x02:
+            //Status
+            StatusResponse(ReplyDeviceAddress);
+            break;
+          case 0x03:
+            // Streaming Mode
+            StreamingModeResponse(ReplyDeviceAddress);
+            break;
+          case 0x04:
+            // Pacing
+            PacingResponse(ReplyDeviceAddress);
+            break;
+          case 0x05:
+            // Units
+            UnitsSystemResponse(ReplyDeviceAddress);
+            break;
+          case 0x06:
+            // i/o
+            break;
+          default:
+            // return Error that this command isn't supported
+            break;
+        }
 
-    } else if (RXData[2] == "S") {  // check if the packet is a Set
-      switch (RXData[2]) {
-        case 0x03:
-          // Streaming Mode
-          StreamingModeResponse(ReplyDeviceAddress);
-          break;
-        case 0x04:
-          // Pacing
-          PacingResponse(ReplyDeviceAddress);
-          break;
-        case 0x05:
-          // Units
-          UnitsSystemResponse(ReplyDeviceAddress);
-          break;
-        case 0x06:
-          // i/o
-          break;
-        case 0x08:
-          // Unit ABR
-          UnitsABRResponse(ReplyDeviceAddress);
-          break;
-        default:
-          // return Error that this command isn't supported
-          break;
+      } else if (RXData[2] == "S") {  // check if the packet is a Set
+        switch (RXData[2]) {
+          case 0x03:
+            // Streaming Mode
+            StreamingModeResponse(ReplyDeviceAddress);
+            break;
+          case 0x04:
+            // Pacing
+            PacingResponse(ReplyDeviceAddress);
+            break;
+          case 0x05:
+            // Units
+            UnitsSystemResponse(ReplyDeviceAddress);
+            break;
+          case 0x06:
+            // i/o
+            break;
+          case 0x08:
+            // Unit ABR
+            UnitsABRResponse(ReplyDeviceAddress);
+            break;
+          default:
+            // return Error that this command isn't supported
+            break;
+        }
       }
     }
+  }else{
+    //if ID == PacketIdentifer then there are possibly two devices on the BUS with the same ID/PacketIdentifer post an error 
   }
 }
 
@@ -345,7 +382,7 @@ void UnitsSystemSet(char Data, int ReplyToAddress) {
   :rtype: None
     */
 
-  if (Data == "I" || Data == "M") {
+  if (Data == 'I' || Data == 'M') {
     EEPROM.update(0, Data);
   }
   UnitsSystemResponse(ReplyToAddress);
@@ -497,7 +534,9 @@ void ParamCommandToCall(int Index, String CommandRaw) {
     case 0:
       //SETUNITSYSTEM
       if (CommandRaw == "I" || CommandRaw == "M"){
-        UnitsSystemSet(CommandRaw,-1);
+        char FilteredCommand = 'I';
+        if (CommandRaw == "M") {FilteredCommand = 'M';}
+        UnitsSystemSet(FilteredCommand,-1);
       }else{
         SendSerial("%R,Error,Invalid Parameter, I or M");
       }
@@ -513,11 +552,11 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      PacingSet(CommandRaw, -1);
+      PacingSet(CommandRaw.toInt(), -1);
       break;
     case 3:
       //SETDEVICEADDRESS
-      SetStreamingData(CommandRaw, -1);
+      SetDeviceAddress(CommandRaw.toInt());
       break;
   }
 }
@@ -531,7 +570,7 @@ void CommandToCall(int Index) {
       break;
     case 1:
       //ERROR?
-      GetDeviceInfo(-1);
+      GetError(-1);
       break;
     case 2:
       //STREAMING?
@@ -547,10 +586,11 @@ void CommandToCall(int Index) {
       break;
     case 5:
       //RESETERROR
-      //ErrorReset(-1);
+      ResetError();
       break;
     case 6:
       //REBOOT
-      //RebootDevice(-1);
+      RebootDevice();
       break;
   }
+}
