@@ -6,9 +6,14 @@ char UnitSystem;
 long PacingTimer;
 long PacingTime;
 int DeviceType = 0;
-char Units;
+int PacketIdentifer = 0;
 
 #define ComPort Serial
+String inputString = "";      // a String to hold incoming data from ports
+bool stringComplete = false;  // whether the string is complete for each respective port
+
+#define ErrorLEDpin 3
+int ErrorNumber = 0;
 
 const char* AcceptedCommands[] = {
   "UNITS?",
@@ -19,21 +24,13 @@ const char* AcceptedCommands[] = {
   "RESETERROR",
   "REBOOT",
 };
+
 const char* ParameterCommands[] = {
   "SETUNITSYSTEM",
   "SETSTREAMING",
   "SETPACINGTIME",
   "SETDEVICEADDRESS",
 };
-
-
-String inputString = "";      // a String to hold incoming data from ports
-bool stringComplete = false;  // whether the string is complete for each respective port
-
-#define ErrorLEDpin 3
-int ErrorNumber = 0;
-
-int PacketIdentifer = 0;
 
 void setup() {
   ComPort.begin(9600);
@@ -57,8 +54,8 @@ void setup() {
   CAN.onReceive(onReceive);
 
   GetUnitSystemFromMemory();
-  ComPort.print("Units:");
-  ComPort.println(Units);
+  ComPort.print("UnitSystem:");
+  ComPort.println(UnitSystem);
 
   GetStreamingFromMemory();
   ComPort.print("Streaming:");
@@ -96,9 +93,9 @@ void GetUnitSystemFromMemory() {
   //Read Units out of EEPROM
   char TempValue = EEPROM.read(4);
   if (TempValue == 'I' || TempValue == 'M') {
-    Units = TempValue;
+    UnitSystem = TempValue;
   } else {
-    Units = 'I';
+    UnitSystem = 'I';
     EEPROM.update(0, 'I');
   }
 }
@@ -396,11 +393,11 @@ void UnitsSystemResponse(int ReplyToAddress) {
   :rtype: None
     */
 
-  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(Units) };
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(UnitSystem) };
   if (ReplyToAddress != -1) {
     CANBusSend(5, false, DataPacket);
   } else {
-    SendSerial("UnitsSystem:0x05:" + Units);
+    SendSerial("UnitsSystem:0x05:" + String(UnitSystem));
   }
 }
 
@@ -413,6 +410,7 @@ void UnitsSystemSet(char Data, int ReplyToAddress) {
     */
 
   if (Data == 'I' || Data == 'M') {
+    UnitSystem = Data;
     EEPROM.update(0, Data);
   }
   UnitsSystemResponse(ReplyToAddress);
@@ -432,7 +430,7 @@ void UnitsABRResponse(int ReplyToAddress) {
       ABR = 0x01;
       break;
     case 2:  // Temp
-      if (Units == "I") {
+      if (UnitSystem == 'I') {
         ABR = 0x03;
       } else {
         ABR = 0x02;
@@ -442,14 +440,14 @@ void UnitsABRResponse(int ReplyToAddress) {
       ABR = 0x04;
       break;
     case 4:  // Pressure
-      if (Units == "I") {
+      if (UnitSystem == 'I') {
         ABR = 0x06;
       } else {
         ABR = 0x05;
       }
       break;
     case 5:  // Vacuum
-      if (Units == "I") {
+      if (UnitSystem == 'I') {
         ABR = 0x08;
       } else {
         ABR = 0x07;
@@ -555,33 +553,36 @@ String PainlessInstructionSet(String& TestString) {
 }  //End of PIS Function
 
 void ParamCommandToCall(int Index, String CommandRaw) {
+  int ParamDelimIndex = CommandRaw.indexOf("*");
+  int End = CommandRaw.indexOf("\r");
+  String ThingToTest = CommandRaw.substring(ParamDelimIndex + 1, End - 1);
+
   switch (Index) {
     case 0:
-      //SETUNITSYSTEM
-      if (CommandRaw == "I" || CommandRaw == "M") {
+      //SETUNITSYSTEM      
+      if (ThingToTest == "I" || ThingToTest == "M") {
         char FilteredCommand = 'I';
-        if (CommandRaw == "M") { FilteredCommand = 'M'; }
+        if (ThingToTest == "M") { FilteredCommand = 'M'; }
         UnitsSystemSet(FilteredCommand, -1);
       } else {
         SendSerial("%R,Error,Invalid Parameter, I or M");
       }
-
       break;
     case 1:
       //SETSTREAMING
       if (CommandRaw == "0" || CommandRaw == "1") {
-        StreamingModeSet(CommandRaw, -1);
+        StreamingModeSet(ThingToTest, -1);
       } else {
         SendSerial("%R,Error,Invalid Parameter, 0 or 1");
       }
       break;
     case 2:
       //SETPACINGTIME
-      PacingSet(CommandRaw.toInt(), -1);
+      PacingSet(ThingToTest.toInt(), -1);
       break;
     case 3:
       //SETDEVICEADDRESS
-      SetDeviceAddress(CommandRaw.toInt());
+      SetDeviceAddress(ThingToTest.toInt());
       break;
   }
 }
