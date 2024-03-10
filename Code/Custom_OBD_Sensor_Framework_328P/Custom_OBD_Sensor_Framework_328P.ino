@@ -40,8 +40,6 @@ void setup() {
   digitalWrite(ErrorLEDpin, LOW);
 
   GetDeviceAddressFromMemory();
-  ComPort.print("CAN Address: ");
-  ComPort.println(PacketIdentifer);
 
   // Setup CAN Bus
   CAN.setPins(9, 2);
@@ -66,6 +64,21 @@ void setup() {
   ComPort.println(PacingTime);
 }
 
+void SendSerial(String Data, bool CR = true) {
+  /*
+
+  :param Data: String to be sent out of the Serial Port
+  :type Data: String
+  :return: None
+  :rtype: None
+    */
+  if (CR == true) {
+    ComPort.println(Data);
+  } else {
+    ComPort.print(Data);
+  }
+}
+
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
 void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
@@ -86,7 +99,8 @@ void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
 }
 
 void GetDeviceAddressFromMemory() {
-  PacketIdentifer = EEPROM.read(3) << 24 + EEPROM.read(2) << 16 + EEPROM.read(1) << 8 + EEPROM.read(0);
+  PacketIdentifer = EEPROM.read(1) << 8 | EEPROM.read(0);
+  SendSerial("CAN Bus Address: " + String(PacketIdentifer));
 }
 
 void GetUnitSystemFromMemory() {
@@ -113,17 +127,13 @@ void GetStreamingFromMemory() {
 
 void GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  int TempValue = EEPROM.read(6) << 8 || EEPROM.read(7);
-  if (TempValue >= 0 && TempValue <= 65535) {
-    PacingTime = TempValue;
-  } else {
-    PacingTime = 0;
-    EEPROM.update(6, 0);
-    EEPROM.update(7, 0);
-  }
+  int PacingTime = EEPROM.read(3) << 8 || EEPROM.read(2);
 }
 
-void RebootDevice() {
+void RebootDevice(int ReplyToAddress) {
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x10, 0xFF, 0x10, 0xFF, 0x10 };
+  CANBusSend(7, false, DataPacket);
+  SendSerial("Device is Rebooting");
   resetFunc();
 }
 
@@ -135,26 +145,24 @@ void SetError(int Number) {
   }
 }
 
-int GetError(int ReplyToAddress) {
-  return ErrorNumber;
-}
-
-void ResetError() {
-}
-
-void SendSerial(String Data, bool CR = true) {
+void GetError(int ReplyToAddress) {
   /*
-
-  :param Data: String to be sent out of the Serial Port
-  :type Data: String
+  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+  :type ReplyToAddress: int
   :return: None
   :rtype: None
     */
-  if (CR == true) {
-    ComPort.println(Data);
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x07, byte(ErrorNumber) };
+  if (ReplyToAddress != -1) {
+    CANBusSend(5, false, DataPacket);
   } else {
-    ComPort.print(Data);
+    SendSerial("Error:0x07:" + String(ErrorNumber));
   }
+}
+
+void ResetError(int ReplyToAddress) {
+  ErrorNumber = 0;
+  GetError(ReplyToAddress);
 }
 
 void loop() {
@@ -206,7 +214,9 @@ void serialEvent() {
 
 void SetDeviceAddress(int Address) {
   if (Address >= 0 && Address <= 2047) {
-
+    EEPROM.update(1, highByte(Address));
+    EEPROM.update(0, lowByte(Address));
+    GetDeviceAddressFromMemory();
   } else {
     SendSerial("Address must be between 0 and 2047");
   }
@@ -556,6 +566,7 @@ void ParamCommandToCall(int Index, String CommandRaw) {
   int ParamDelimIndex = CommandRaw.indexOf("*");
   int End = CommandRaw.indexOf("\r");
   String ThingToTest = CommandRaw.substring(ParamDelimIndex + 1, End - 1);
+  ComPort.println(ThingToTest);
 
   switch (Index) {
     case 0:
@@ -570,15 +581,20 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 1:
       //SETSTREAMING
-      if (CommandRaw == "0" || CommandRaw == "1") {
-        StreamingModeSet(ThingToTest, -1);
+      if (ThingToTest == "0" || ThingToTest == "1") {
+        StreamingModeSet(ThingToTest.toInt(), -1);
       } else {
         SendSerial("%R,Error,Invalid Parameter, 0 or 1");
       }
       break;
     case 2:
       //SETPACINGTIME
-      PacingSet(ThingToTest.toInt(), -1);
+      if (ThingToTest.toInt() >= 0 && ThingToTest.toInt() <= 65535) {
+        PacingSet(ThingToTest.toInt(), -1);
+      } else {
+        SendSerial("%R,Error,Invalid Parameter, 0 < x < 65535");
+      }
+
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -611,11 +627,13 @@ void CommandToCall(int Index) {
       break;
     case 5:
       //RESETERROR
-      ResetError();
+      SendSerial("Error Reset:0x05");
+      ResetError(-1);
       break;
     case 6:
       //REBOOT
-      RebootDevice();
+      SendSerial("Rebooting:0x06");
+      RebootDevice(-1);
       break;
   }
 }
