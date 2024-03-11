@@ -134,6 +134,7 @@ void RebootDevice(int ReplyToAddress) {
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x10, 0xFF, 0x10, 0xFF, 0x10 };
   CANBusSend(7, false, DataPacket);
   SendSerial("Device is Rebooting");
+  delay(2500);
   resetFunc();
 }
 
@@ -213,12 +214,12 @@ void serialEvent() {
 }
 
 void SetDeviceAddress(int Address) {
-  if (Address >= 0 && Address <= 2047) {
+  if (Address >= 1 && Address <= 2047) {
     EEPROM.update(1, highByte(Address));
     EEPROM.update(0, lowByte(Address));
     GetDeviceAddressFromMemory();
   } else {
-    SendSerial("Address must be between 0 and 2047");
+    SendSerial("Address must be between 1 and 2047");
   }
 }
 
