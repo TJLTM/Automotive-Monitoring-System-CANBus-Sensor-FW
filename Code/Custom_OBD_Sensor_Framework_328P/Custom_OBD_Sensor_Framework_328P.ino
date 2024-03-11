@@ -63,7 +63,7 @@ void setup() {
   ComPort.print("Pacing:");
   ComPort.println(PacingTime);
 
-  //Announce 
+  //Announce
   DiscoveryResponse(0);
 }
 
@@ -574,7 +574,7 @@ void ParamCommandToCall(int Index, String CommandRaw) {
 
   switch (Index) {
     case 0:
-      //SETUNITSYSTEM      
+      //SETUNITSYSTEM
       if (ThingToTest == "I" || ThingToTest == "M") {
         char FilteredCommand = 'I';
         if (ThingToTest == "M") { FilteredCommand = 'M'; }
