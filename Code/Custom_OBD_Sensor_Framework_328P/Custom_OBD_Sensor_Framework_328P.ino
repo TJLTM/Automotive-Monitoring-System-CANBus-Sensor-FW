@@ -62,6 +62,9 @@ void setup() {
   GetPacingTimeFromMemory();
   ComPort.print("Pacing:");
   ComPort.println(PacingTime);
+
+  //Announce 
+  DiscoveryResponse(0);
 }
 
 void SendSerial(String Data, bool CR = true) {
