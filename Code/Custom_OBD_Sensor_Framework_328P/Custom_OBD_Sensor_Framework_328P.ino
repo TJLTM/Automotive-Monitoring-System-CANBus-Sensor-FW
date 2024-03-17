@@ -7,6 +7,7 @@ long PacingTimer;
 long PacingTime;
 int DeviceType = 0;
 int PacketIdentifer = 0;
+byte DataPacket[8] = {};
 
 #define ComPort Serial
 String inputString = "";      // a String to hold incoming data from ports
@@ -243,18 +244,15 @@ void onReceive(int packetSize) {
 
     //Discovery
 
-    if (RXData[2] == "?" && RXData[2] == 0x01) {  // Handle the Discovery Packet
+    if (RXData[2] == '?' && RXData[2] == 0x01) {  // Handle the Discovery Packet
       DiscoveryResponse(RXData[0]);
     }
 
     //Check Device Address
-    byte TargetDeviceAddress = RXData[0] << 8 + RXData[1];
+    byte ReplyDeviceAddress = RXData[0] << 8 + RXData[1];
 
-
-    if (TargetDeviceAddress == PacketIdentifer) {
-      int ReplyDeviceAddress = 0;  // need to get this out of the packet TODO
-
-      if (RXData[2] == "?") {  // check if the packet is a Query
+    if (ReplyDeviceAddress != PacketIdentifer) {
+      if (RXData[2] == '?') {  // check if the packet is a Query
         switch (RXData[2]) {
           case 0x02:
             //Status
@@ -280,7 +278,7 @@ void onReceive(int packetSize) {
             break;
         }
 
-      } else if (RXData[2] == "S") {  // check if the packet is a Set
+      } else if (RXData[2] == 'S') {  // check if the packet is a Set
         switch (RXData[2]) {
           case 0x03:
             // Streaming Mode
