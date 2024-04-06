@@ -1,20 +1,48 @@
 #include <EEPROM.h>
-#include <CAN.h>
+#include <SPI.h>
 
+#define CAN_2515  //CAN_2515 or CAN_2518FD
+// Set SPI CS Pins
+const int SPI_CS_PIN = 9;
+const int CAN_INT_PIN = 2;
+
+#ifdef CAN_2518FD
+#include "mcp2518fd_can.h"
+mcp2518fd CAN(SPI_CS_PIN);  // Set CS pin
+// To TEST MCP2518FD CAN2.0 data transfer
+#define MAX_DATA_SIZE 8
+// To TEST MCP2518FD CANFD data transfer, uncomment below lines
+// #undef  MAX_DATA_SIZE
+// #define MAX_DATA_SIZE 64
+#endif
+
+#ifdef CAN_2515
+#include "mcp2515_can.h"
+mcp2515_can CAN(SPI_CS_PIN);  // Set CS pin
+#define MAX_DATA_SIZE 8
+#endif
+
+// CANBus 
+int DeviceAddress = 0;
+uint32_t id;
+uint8_t type;  // bit0: ext, bit1: rtr
+uint8_t len;
+byte cdata[MAX_DATA_SIZE] = { 0 };
+unsigned char DataPacket[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+//Device Configuration setting 
 bool Streaming;
 char UnitSystem;
 long PacingTimer;
 long PacingTime;
 int DeviceType = 0;
-int PacketIdentifer = 0;
-byte DataPacket[8] = {};
+
+#define ErrorLEDpin 3
+int ErrorNumber = 0;
 
 #define ComPort Serial
 String inputString = "";      // a String to hold incoming data from ports
 bool stringComplete = false;  // whether the string is complete for each respective port
-
-#define ErrorLEDpin 3
-int ErrorNumber = 0;
 
 const char* AcceptedCommands[] = {
   "UNITS?",
@@ -34,23 +62,10 @@ const char* ParameterCommands[] = {
 };
 
 void setup() {
-  ComPort.begin(9600);
-  pinMode(ErrorLEDpin, OUTPUT);
-  digitalWrite(ErrorLEDpin, HIGH);
-  delay(250);
-  digitalWrite(ErrorLEDpin, LOW);
-
+  ComPort.begin(115200);
   GetDeviceAddressFromMemory();
 
-  // Setup CAN Bus
-  CAN.setPins(9, 2);
-  if (!CAN.begin(500E3)) {
-    ComPort.println("Starting CAN failed!");
-    ErrorNumber = 2;
-  }
-
-  // register the receive callback
-  CAN.onReceive(onReceive);
+  CANBusSetup();
 
   GetUnitSystemFromMemory();
   ComPort.print("UnitSystem:");
@@ -64,10 +79,20 @@ void setup() {
   ComPort.print("Pacing:");
   ComPort.println(PacingTime);
 
-  //Announce
+
   DiscoveryResponse(0);
 }
 
+void loop() {
+  CANBusRecieveCheck();
+  //delay(100);
+  //CanBusSend(8);
+  //delay(100);
+}
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
 void SendSerial(String Data, bool CR = true) {
   /*
 
@@ -83,28 +108,138 @@ void SendSerial(String Data, bool CR = true) {
   }
 }
 
-void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
+void serialEvent() {
+  while (ComPort.available()) {
+    // get the new byte:
+    char inChar = (char)ComPort.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a carriage return, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\r') {
+      stringComplete = true;
+    }
+  }
+}
 
-void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+
+
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+void CANBusSetup() {
+#if MAX_DATA_SIZE > 8
   /*
+     * To compatible with MCP2515 API,
+     * default mode is CAN_CLASSIC_MODE
+     * Now set to CANFD mode.
+     */
+  CAN.setMode(CAN_NORMAL_MODE);
+#endif
 
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
-  CAN.beginPacket(PacketIdentifer, NumberOfBytes, RequestResponse);
+  while (CAN_OK != CAN.begin(CAN_500KBPS)) {  // init can bus : baudrate = 500k
+    ComPort.println(F("CAN init fail, retry..."));
+    delay(100);
+  }
+  ComPort.println(F("CAN init ok!"));
+}
 
-  for (uint8_t Index = 0; Index < NumberOfBytes; Index++) {
-    CAN.write(Data[Index]);
+void CANBusRecieveCheck() {
+  // check if data coming
+  if (CAN_MSGAVAIL != CAN.checkReceive()) {
+    return;
   }
 
-  CAN.endPacket();
+  char prbuf[32 + MAX_DATA_SIZE * 3];
+  int i, n;
+
+  unsigned long t = millis();
+  // read data, len: data length, buf: data buf
+  CAN.readMsgBuf(&len, cdata);
+
+  id = CAN.getCanId();
+  type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
+  /*
+     * MCP2515(or this driver) could not handle properly
+     * the data carried by remote frame
+     */
+
+  n = sprintf(prbuf, "%04lu.%03d ", t / 1000, int(t % 1000));
+  /* Displayed type:
+     *
+     * 0x00: standard data frame
+     * 0x02: extended data frame
+     * 0x30: standard remote frame
+     * 0x32: extended remote frame
+     */
+  static const byte type2[] = { 0x00, 0x02, 0x30, 0x32 };
+  n += sprintf(prbuf + n, "RX: [%08lX](%02X) ", (unsigned long)id, type2[type]);
+  // n += sprintf(prbuf, "RX: [%08lX](%02X) ", id, type);
+
+  for (i = 0; i < len; i++) {
+    n += sprintf(prbuf + n, "%02X ", cdata[i]);
+  }
+  ComPort.println(prbuf);
+}
+
+void CanBusCommandDispatcher(){
+  //Check if Discovery do not filter by ID 
+  
+
+  //Check if this is the target Device 
+
+
+}
+
+void CanBusSend(int DataLength) {
+  // ID, ext, len, byte: data
+  //ext = 0 for standard frame
+  CAN.sendMsgBuf(2047, 0, DataLength, DataPacket);
+}
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
+
+void RebootDevice(int ReplyToAddress) {
+  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x10, 0xFF, 0x10, 0xFF, 0x10 };
+  CanBusSend(7);
+  SendSerial("Device is Rebooting");
+  delay(2500);
+  resetFunc();
+}
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+void SetDeviceAddress(int Address) {
+  if (Address >= 1 && Address <= 2047) {
+    EEPROM.update(1, highByte(Address));
+    EEPROM.update(0, lowByte(Address));
+    GetDeviceAddressFromMemory();
+  } else {
+    SendSerial("Address must be between 1 and 2047");
+  }
 }
 
 void GetDeviceAddressFromMemory() {
-  PacketIdentifer = EEPROM.read(1) << 8 | EEPROM.read(0);
-  SendSerial("CAN Bus Address: " + String(PacketIdentifer));
+  DeviceAddress = EEPROM.read(1) << 8 | EEPROM.read(0);
+  SendSerial("CAN Bus Address: " + String(DeviceAddress));
 }
 
 void GetUnitSystemFromMemory() {
@@ -134,13 +269,13 @@ void GetPacingTimeFromMemory() {
   int PacingTime = EEPROM.read(3) << 8 || EEPROM.read(2);
 }
 
-void RebootDevice(int ReplyToAddress) {
-  byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x10, 0xFF, 0x10, 0xFF, 0x10 };
-  CANBusSend(7, false, DataPacket);
-  SendSerial("Device is Rebooting");
-  delay(2500);
-  resetFunc();
-}
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
 
 void SetError(int Number) {
   switch (Number) {
@@ -159,7 +294,7 @@ void GetError(int ReplyToAddress) {
     */
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x07, byte(ErrorNumber) };
   if (ReplyToAddress != -1) {
-    CANBusSend(5, false, DataPacket);
+    CanBusSend(5);
   } else {
     SendSerial("Error:0x07:" + String(ErrorNumber));
   }
@@ -170,145 +305,13 @@ void ResetError(int ReplyToAddress) {
   GetError(ReplyToAddress);
 }
 
-void loop() {
-  if (ErrorNumber != 0) {
-    // blink the error LED the number of times of the error and then wait 1 second to blink it again
-    for (int i = 0; i < ErrorNumber; i++) {
-      digitalWrite(ErrorLEDpin, HIGH);
-      delay(150);
-      digitalWrite(ErrorLEDpin, LOW);
-      delay(500);
-    }
-    delay(1000);
-  } else {
-    //if no error run the main program
-    long CurrentTime = millis();
-    if (Streaming == true) {
-      if (PacingTime != 0) {
-        if (abs(PacingTimer - CurrentTime) > PacingTime) {
-          //StatusResponse();
-          PacingTimer = CurrentTime;
-        }
-      } else {
-        //StatusResponse();
-      }
-    }
-  }
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
 
-  serialEvent();
-
-  if (stringComplete) {
-    inputString = PainlessInstructionSet(inputString);
-    stringComplete = false;
-  }
-}
-
-void serialEvent() {
-  while (ComPort.available()) {
-    // get the new byte:
-    char inChar = (char)ComPort.read();
-    // add it to the inputString:
-    inputString += inChar;
-    // if the incoming character is a carriage return, set a flag so the main loop can
-    // do something about it:
-    if (inChar == '\r') {
-      stringComplete = true;
-    }
-  }
-}
-
-void SetDeviceAddress(int Address) {
-  if (Address >= 1 && Address <= 2047) {
-    EEPROM.update(1, highByte(Address));
-    EEPROM.update(0, lowByte(Address));
-    GetDeviceAddressFromMemory();
-  } else {
-    SendSerial("Address must be between 1 and 2047");
-  }
-}
-
-void onReceive(int packetSize) {
-  /*
-  :param packetSize: CAN packet size
-  :type packetSize: int
-  :return: None
-  :rtype: None
-    */
-  int ID = CAN.packetId();
-  byte RXData[packetSize];
-  if (ID != PacketIdentifer) {
-    if (CAN.available()) {
-      for (uint8_t Index = 0; Index < packetSize; Index++)
-        RXData[Index] = CAN.read();
-    }
-
-    //Discovery
-
-    if (RXData[2] == '?' && RXData[2] == 0x01) {  // Handle the Discovery Packet
-      DiscoveryResponse(RXData[0]);
-    }
-
-    //Check Device Address
-    byte ReplyDeviceAddress = RXData[0] << 8 + RXData[1];
-
-    if (ReplyDeviceAddress != PacketIdentifer) {
-      if (RXData[2] == '?') {  // check if the packet is a Query
-        switch (RXData[2]) {
-          case 0x02:
-            //Status
-            StatusResponse(ReplyDeviceAddress);
-            break;
-          case 0x03:
-            // Streaming Mode
-            StreamingModeResponse(ReplyDeviceAddress);
-            break;
-          case 0x04:
-            // Pacing
-            PacingResponse(ReplyDeviceAddress);
-            break;
-          case 0x05:
-            // Units
-            UnitsSystemResponse(ReplyDeviceAddress);
-            break;
-          case 0x06:
-            // i/o
-            break;
-          default:
-            // return Error that this command isn't supported
-            break;
-        }
-
-      } else if (RXData[2] == 'S') {  // check if the packet is a Set
-        switch (RXData[2]) {
-          case 0x03:
-            // Streaming Mode
-            StreamingModeResponse(ReplyDeviceAddress);
-            break;
-          case 0x04:
-            // Pacing
-            PacingResponse(ReplyDeviceAddress);
-            break;
-          case 0x05:
-            // Units
-            UnitsSystemResponse(ReplyDeviceAddress);
-            break;
-          case 0x06:
-            // i/o
-            break;
-          case 0x08:
-            // Unit ABR
-            UnitsABRResponse(ReplyDeviceAddress);
-            break;
-          default:
-            // return Error that this command isn't supported
-            break;
-        }
-      }
-    }
-  } else {
-    //if ID == PacketIdentifer then there are possibly two devices on the BUS with the same ID/PacketIdentifer post an error
-  }
-}
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
 
 void DiscoveryResponse(int ReplyToAddress) {
   /*
@@ -318,7 +321,7 @@ void DiscoveryResponse(int ReplyToAddress) {
   :rtype: None
     */
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x01, byte(DeviceType), byte(DeviceType), byte(DeviceType) };
-  CANBusSend(7, false, DataPacket);
+  CanBusSend(7);
 }
 
 void StatusResponse(int ReplyToAddress) {
@@ -332,7 +335,7 @@ void StatusResponse(int ReplyToAddress) {
   int ReturnedValue = 0;
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x02, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType) };
   if (ReplyToAddress != -1) {
-    CANBusSend(7, false, DataPacket);
+    CanBusSend(7);
   } else {
     SendSerial("StatusResponse:0x02:" + String(ReturnedValue) + ":" + String(DeviceType));
   }
@@ -347,7 +350,7 @@ void StreamingModeResponse(int ReplyToAddress) {
     */
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(Streaming) };
   if (ReplyToAddress != -1) {
-    CANBusSend(5, false, DataPacket);
+    CanBusSend(5);
   } else {
     SendSerial("StreamingMode:0x03:" + String(Streaming));
   }
@@ -376,7 +379,7 @@ void PacingResponse(int ReplyToAddress) {
     */
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04, highByte(PacingTime), lowByte(PacingTime) };
   if (ReplyToAddress != -1) {
-    CANBusSend(6, false, DataPacket);
+    CanBusSend(6);
   } else {
     SendSerial("Pacing:0x04:" + String(PacingTime));
   }
@@ -407,7 +410,7 @@ void UnitsSystemResponse(int ReplyToAddress) {
 
   byte DataPacket[] = { highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(UnitSystem) };
   if (ReplyToAddress != -1) {
-    CANBusSend(5, false, DataPacket);
+    CanBusSend(5);
   } else {
     SendSerial("UnitsSystem:0x05:" + String(UnitSystem));
   }
@@ -474,11 +477,19 @@ void UnitsABRResponse(int ReplyToAddress) {
   }
 
   if (ReplyToAddress != -1) {
-    CANBusSend(2, false, ABR);
+    CanBusSend(2);
   } else {
     SendSerial("UnitABR:0x08:" + String(ABR));
   }
 }
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
 
 /*
   SCC = start command character
@@ -639,3 +650,7 @@ void CommandToCall(int Index) {
       break;
   }
 }
+
+//----------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------
