@@ -1,4 +1,4 @@
-# Automotive_Monitoring_System_CANBus_Sensor_Framework_328P
+# Automotive Monitoring System CANBus Sensor
 
 Creating a Basic API and Code Framework for CAN bus sensors. 
 
