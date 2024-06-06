@@ -1,4 +1,4 @@
-# Custom-OBD-Sensor-Framework
+# Automotive Monitoring System CANBus Sensor Firmware
 
 Creating a Basic API and Code Framework for CAN bus sensors. 
 
