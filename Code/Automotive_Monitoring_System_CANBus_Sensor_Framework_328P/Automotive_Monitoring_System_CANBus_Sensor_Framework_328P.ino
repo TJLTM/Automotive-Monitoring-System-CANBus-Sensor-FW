@@ -1,6 +1,7 @@
 #include <EEPROM.h>
 #include <SPI.h>
 
+
 #define CAN_2515  //CAN_2515 or CAN_2518FD
 // Set SPI CS Pins
 const int SPI_CS_PIN = 9;
@@ -30,10 +31,7 @@ const uint8_t len;
 byte cdata[MAX_DATA_SIZE] = { 0 };
 
 //Device Configuration setting
-bool Streaming;
-char UnitSystem;
 long PacingTimer;
-long PacingTime;
 const PROGMEM uint8_t DeviceType = 0;
 const PROGMEM uint8_t MaxChannelNumber = 1;
 
@@ -50,6 +48,8 @@ const char *const  AcceptedCommands[] = {
   "UNITSYSTEM?",
   "RESETERROR",
   "REBOOT",
+  "TEMP?",
+  "MSC?"
 };
 
 const char *const PROGMEM ParameterCommands[] = {
@@ -58,6 +58,8 @@ const char *const PROGMEM ParameterCommands[] = {
   "SETPACINGTIME",
   "SETDEVICEADDRESS",
   "STATE",
+  "MAXRANGE",
+  "MINRANGE"
 };
 
 
@@ -70,18 +72,14 @@ void setup() {
 
   CANBusSetup();
 
-  GetUnitSystemFromMemory();
   ComPort.print("UnitSystem:");
-  ComPort.println(UnitSystem);
+  ComPort.println(GetUnitSystemFromMemory());
 
-  GetStreamingFromMemory();
   ComPort.print("Streaming:");
-  ComPort.println(Streaming);
+  ComPort.println(GetStreamingFromMemory());
 
-  GetPacingTimeFromMemory();
   ComPort.print("Pacing:");
-  ComPort.println(PacingTime);
-
+  ComPort.println(GetPacingTimeFromMemory());
 
   DiscoveryResponse(0);
 }
@@ -90,9 +88,9 @@ void loop() {
   CANBusRecieveCheck();
 
   long CurrentTime = millis();
-  if (Streaming == true) {
-    if (PacingTime != 0) {
-      if (abs(PacingTimer - CurrentTime) > PacingTime) {
+  if (GetStreamingFromMemory() == true) {
+    if (GetPacingTimeFromMemory() != 0) {
+      if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
         for (uint8_t i = 1; i <= MaxChannelNumber; i++) {
           StatusResponse(DeviceAddress, i);
         }
@@ -301,6 +299,14 @@ void CommandToCall(int Index) {
       SendSerial("Rebooting:0x06");
       RebootDevice(-1);
       break;
+    case 6:
+      //"TEMP?"
+      DeviceTemp(-1);
+      break;
+    case 7:
+    // "MSC?" Max Sensor Channel
+    MaxSensorChannel(-1);
+    break;
   }
 }
 
@@ -511,31 +517,27 @@ void GetDeviceAddressFromMemory() {
   SendSerial("CAN Bus Address: " + String(DeviceAddress));
 }
 
-void GetUnitSystemFromMemory() {
+char GetUnitSystemFromMemory() {
   //Read Units out of EEPROM
   char TempValue = EEPROM.read(4);
-  if (TempValue == 'I' || TempValue == 'M') {
-    UnitSystem = TempValue;
-  } else {
-    UnitSystem = 'I';
+  if (TempValue != 'I' || TempValue != 'M') {
     EEPROM.update(0, 'I');
   }
+  return TempValue;
 }
 
-void GetStreamingFromMemory() {
+int GetStreamingFromMemory() {
   //Read Stream Value out of EEPROM
   int TempValue = EEPROM.read(5);
-  if (TempValue == 0 || TempValue == 1) {
-    Streaming = TempValue;
-  } else {
-    Streaming = 1;
-    EEPROM.update(1, 1);
+  if (TempValue != 0 || TempValue != 1) {
+    EEPROM.update(1, 0);
   }
+  return TempValue;
 }
 
-void GetPacingTimeFromMemory() {
+long GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  int PacingTime = EEPROM.read(3) << 8 || EEPROM.read(2);
+  return EEPROM.read(3) << 8 || EEPROM.read(2);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -601,9 +603,9 @@ void StreamingModeResponse(int ReplyToAddress) {
   :rtype: None
     */
   if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(Streaming), 0x00, 0x00, 0x00);
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00);
   } else {
-    SendSerial("StreamingMode:0x03:" + String(Streaming));
+    SendSerial("StreamingMode:0x03:" + String(GetStreamingFromMemory()));
   }
 }
 
@@ -616,7 +618,6 @@ void StreamingModeSet(bool Data, int ReplyToAddress) {
     */
   if (Data == true || Data == false) {
     EEPROM.update(1, Data);
-    Streaming = Data;
   }
   StreamingModeResponse(ReplyToAddress);
 }
@@ -629,9 +630,9 @@ void PacingResponse(int ReplyToAddress) {
   :rtype: None
     */
   if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 6, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04, highByte(PacingTime), lowByte(PacingTime), 0x00, 0x00);
+    CanBusSend(DeviceAddress, 6, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04, highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00);
   } else {
-    SendSerial("Pacing:0x04:" + String(PacingTime));
+    SendSerial("Pacing:0x04:" + String(GetPacingTimeFromMemory()));
   }
 }
 
@@ -645,7 +646,6 @@ void PacingSet(int Data, int ReplyToAddress) {
   if (Data >= 0 && Data <= 65535) {
     EEPROM.update(2, highByte(Data));
     EEPROM.update(3, lowByte(Data));
-    PacingTime = Data;
   }
   PacingResponse(ReplyToAddress);
 }
@@ -659,9 +659,9 @@ void UnitsSystemResponse(int ReplyToAddress) {
     */
 
   if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(UnitSystem), 0x00, 0x00, 0x00);
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(GetUnitSystemFromMemory()), 0x00, 0x00, 0x00);
   } else {
-    SendSerial("UnitsSystem:0x05:" + String(UnitSystem));
+    SendSerial("UnitsSystem:0x05:" + String(GetUnitSystemFromMemory()));
   }
 }
 
@@ -674,12 +674,10 @@ void UnitsSystemSet(char Data, int ReplyToAddress) {
     */
 
   if (Data == 'I' || Data == 'M') {
-    UnitSystem = Data;
     EEPROM.update(0, Data);
   }
   UnitsSystemResponse(ReplyToAddress);
 }
-
 
 void UnitsABRResponse(int ReplyToAddress) {
   /*
@@ -695,7 +693,7 @@ void UnitsABRResponse(int ReplyToAddress) {
       ABR = 0x01;
       break;
     case 2:  // Temp
-      if (UnitSystem == 'I') {
+      if (GetUnitSystemFromMemory() == 'I') {
         ABR = 0x03;
       } else {
         ABR = 0x02;
@@ -705,14 +703,14 @@ void UnitsABRResponse(int ReplyToAddress) {
       ABR = 0x04;
       break;
     case 4:  // Pressure
-      if (UnitSystem == 'I') {
+      if (GetUnitSystemFromMemory() == 'I') {
         ABR = 0x06;
       } else {
         ABR = 0x05;
       }
       break;
     case 5:  // Vacuum
-      if (UnitSystem == 'I') {
+      if (GetUnitSystemFromMemory() == 'I') {
         ABR = 0x08;
       } else {
         ABR = 0x07;
@@ -733,8 +731,40 @@ void UnitsABRResponse(int ReplyToAddress) {
   }
 }
 
+void DeviceTemp(int ReplyToAddress){
+  byte Value = 0;
+  //read ADC and do Math
 
+  if (ReplyToAddress != -1) {
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0B, byte(Value), 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("DeviceTemp:0x0B:" + String(Value));
+  }
+}
 
+void MaxSensorChannel(int ReplyToAddress){
+  if (ReplyToAddress != -1) {
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0C, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("Max Sensor Channel:0x0C:" + String(MaxChannelNumber));
+  }
+}
+
+void MaxSensorChannelRange(int ReplyToAddress, int Channel){
+  if (ReplyToAddress != -1) {
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0D, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("Max Sensor Channel Range:0x0D:" + String(MaxChannelNumber));
+  }
+}
+
+void MinSensorChannelRange(int ReplyToAddress, int Channel){
+  if (ReplyToAddress != -1) {
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0E, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("Min Sensor Channel Range:0x0E:" + String(MaxChannelNumber));
+  }
+}
 //----------------------------------------------------------------------------------------------------
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
