@@ -2,46 +2,38 @@
 #include <SPI.h>
 
 
-#define CAN_2515  //CAN_2515 or CAN_2518FD
-// Set SPI CS Pins
-const int SPI_CS_PIN = 9;
-const int CAN_INT_PIN = 2;
+//CAN_2515 or CAN_2518FD
+// #include "mcp2518fd_can.h"
+// mcp2518fd CAN(SPI_CS_PIN);  // Set CS pin
+// // To TEST MCP2518FD CAN2.0 data transfer
+// #define MAX_DATA_SIZE 8
+// // To TEST MCP2518FD CANFD data transfer, uncomment below lines
+// // #define MAX_DATA_SIZE 64
 
-#ifdef CAN_2518FD
-#include "mcp2518fd_can.h"
-mcp2518fd CAN(SPI_CS_PIN);  // Set CS pin
-// To TEST MCP2518FD CAN2.0 data transfer
-#define MAX_DATA_SIZE 8
-// To TEST MCP2518FD CANFD data transfer, uncomment below lines
-// #undef  MAX_DATA_SIZE
-// #define MAX_DATA_SIZE 64
-#endif
-
-#ifdef CAN_2515
-#include "mcp2515_can.h"
-mcp2515_can CAN(SPI_CS_PIN);  // Set CS pin
-#define MAX_DATA_SIZE 8
-#endif
+// #include "mcp2515_can.h"
+// mcp2515_can CAN(SPI_CS_PIN);
 
 // CANBus
-int DeviceAddress = 0;
-uint32_t id;
-uint8_t type;  // bit0: ext, bit1: rtr
-const uint8_t len;
+#include "mcp2515_can.h"
+mcp2515_can CAN(9);
+#define MAX_DATA_SIZE 8
+int DeviceAddress = 1;
+//uint32_t id;
+//uint8_t type;  // bit0: ext, bit1: rtr
+//const uint8_t len;
 byte cdata[MAX_DATA_SIZE] = { 0 };
 
 //Device Configuration setting
 long PacingTimer;
-const PROGMEM uint8_t DeviceType = 0;
-const PROGMEM uint8_t MaxChannelNumber = 1;
+#define DeviceType 0
+#define MaxChannelNumber 1
 
 uint8_t ErrorNumber = 0;
 
 #define ComPort Serial
 String inputString = "";      // a String to hold incoming data from ports
-bool stringComplete = false;  // whether the string is complete for each respective port
 
-const char *const  AcceptedCommands[] = {
+const char *const AcceptedCommands[] = {
   "UNITS?",
   "ERROR?",
   "STREAMING?",
@@ -52,7 +44,7 @@ const char *const  AcceptedCommands[] = {
   "MSC?"
 };
 
-const char *const PROGMEM ParameterCommands[] = {
+const char* ParameterCommands[] = {
   "SETUNITSYSTEM",
   "SETSTREAMING",
   "SETPACINGTIME",
@@ -100,10 +92,6 @@ void loop() {
   }
 
   serialEvent();
-  if (stringComplete) {
-    inputString = PainlessInstructionSet(inputString);
-    stringComplete = false;
-  }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -126,14 +114,10 @@ void SendSerial(String Data, bool CR = true) {
 
 void serialEvent() {
   while (ComPort.available()) {
-    // get the new byte:
     char inChar = (char)ComPort.read();
-    // add it to the inputString:
     inputString += inChar;
-    // if the incoming character is a carriage return, set a flag so the main loop can
-    // do something about it:
     if (inChar == '\r') {
-      stringComplete = true;
+      PainlessInstructionSet(inputString);
     }
   }
 }
@@ -149,7 +133,7 @@ void serialEvent() {
   case 7 - Valid SSC and Delimiter is found but the command is not in the list of commands - tell the user
 */
 
-String PainlessInstructionSet(String& TestString) {
+String PainlessInstructionSet(String &TestString) {
   int Search = 1;
   while (Search == 1) {
     bool ParamCommandCalled = false;
@@ -184,6 +168,7 @@ String PainlessInstructionSet(String& TestString) {
                   if (ParamHeader == ParameterCommands[i]) {
                     ParamCommandToCall(i, CommandCandidate);
                     ParamCommandCalled = true;
+                    break;
                   }
                 }
               } else {
@@ -193,6 +178,7 @@ String PainlessInstructionSet(String& TestString) {
                     //Serial.println("PIS Case 3B");
                     CommandToCall(i);
                     CommandCalled = true;
+                    break;
                   }
                 }
               }
@@ -226,7 +212,6 @@ void ParamCommandToCall(int Index, String CommandRaw) {
   int ParamDelimIndex = CommandRaw.indexOf("*");
   int End = CommandRaw.indexOf("\r");
   String ThingToTest = CommandRaw.substring(ParamDelimIndex + 1, End - 1);
-  ComPort.println(ThingToTest);
 
   switch (Index) {
     case 0:
@@ -249,12 +234,9 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      if (ThingToTest.toInt() >= 0 && ThingToTest.toInt() <= 65535) {
+      if (PacingValueCheck(ThingToTest.toInt()) == true) {
         PacingSet(ThingToTest.toInt(), -1);
-      } else {
-        SendSerial("%R,Error,Invalid Parameter, 0 < x < 65535");
       }
-
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -304,13 +286,11 @@ void CommandToCall(int Index) {
       DeviceTemp(-1);
       break;
     case 7:
-    // "MSC?" Max Sensor Channel
-    MaxSensorChannel(-1);
-    break;
+      // "MSC?" Max Sensor Channel
+      MaxSensorChannel(-1);
+      break;
   }
 }
-
-
 //----------------------------------------------------------------------------------------------------
 //End Of Serial Port Handling Functions
 //----------------------------------------------------------------------------------------------------
@@ -319,6 +299,20 @@ void CommandToCall(int Index) {
 //System related functions
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
+
+bool PacingValueCheck(int Value) {
+  if (Value > 0 && Value < 250) {
+    SendSerial("%R,Error,Invalid Parameter, x = 0 || 250 < x < 65535");
+    return false;
+  } else {
+    if (Value == 0 || Value <= 65535) {
+      return true;
+    } else {
+      SendSerial("%R,Error,Invalid Parameter, x = 0 || 250 < x < 65535");
+      return false;
+    }
+  }
+}
 
 void SetError(int Number) {
   switch (Number) {
@@ -365,12 +359,12 @@ void CANBusRecieveCheck() {
   char prbuf[32 + MAX_DATA_SIZE * 3];
   int i, n;
 
-  unsigned long t = millis();
+  //unsigned long t = millis();
   // read data, len: data length, buf: data buf
-  CAN.readMsgBuf(&len, cdata);
+  CAN.readMsgBuf(8, cdata);
 
-  id = CAN.getCanId();
-  type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
+  //id = CAN.getCanId();
+  //type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
   /*
      * MCP2515(or this driver) could not handle properly
      * the data carried by remote frame
@@ -395,7 +389,7 @@ void CANBusRecieveCheck() {
 
   //Check if Discovery do not filter by ID
   if (cdata[2] == '?' && cdata[3] == 0xFF && cdata[4] == 0xFF && cdata[3] == 0x00) {
-    DiscoveryResponse(id);
+    DiscoveryResponse(CAN.getCanId());
   } else {
     //Check if this is the target Device
     int TargetIDinPacket = cdata[0] << 8 + cdata[1];
@@ -521,7 +515,7 @@ char GetUnitSystemFromMemory() {
   //Read Units out of EEPROM
   char TempValue = EEPROM.read(4);
   if (TempValue != 'I' || TempValue != 'M') {
-    EEPROM.update(0, 'I');
+    EEPROM.update(4, 'I');
   }
   return TempValue;
 }
@@ -530,14 +524,20 @@ int GetStreamingFromMemory() {
   //Read Stream Value out of EEPROM
   int TempValue = EEPROM.read(5);
   if (TempValue != 0 || TempValue != 1) {
-    EEPROM.update(1, 0);
+    EEPROM.update(5, 0);
   }
   return TempValue;
 }
 
-long GetPacingTimeFromMemory() {
+int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  return EEPROM.read(3) << 8 || EEPROM.read(2);
+  int Value =  EEPROM.read(3) << 8 || EEPROM.read(2);
+  if (PacingValueCheck(Value) == false){
+    EEPROM.update(2, 0);
+    EEPROM.update(3, 0);
+    Value = 0;
+  }
+  return Value;
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -643,7 +643,7 @@ void PacingSet(int Data, int ReplyToAddress) {
   :return: None
   :rtype: None
     */
-  if (Data >= 0 && Data <= 65535) {
+  if (PacingValueCheck(Data) == true) {
     EEPROM.update(2, highByte(Data));
     EEPROM.update(3, lowByte(Data));
   }
@@ -674,7 +674,7 @@ void UnitsSystemSet(char Data, int ReplyToAddress) {
     */
 
   if (Data == 'I' || Data == 'M') {
-    EEPROM.update(0, Data);
+    EEPROM.update(4, Data);
   }
   UnitsSystemResponse(ReplyToAddress);
 }
@@ -731,18 +731,18 @@ void UnitsABRResponse(int ReplyToAddress) {
   }
 }
 
-void DeviceTemp(int ReplyToAddress){
-  byte Value = 0;
-  //read ADC and do Math
+void DeviceTemp(int ReplyToAddress) {
+  float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
+  int Value = ConvertCtoF(NTCReadInC(10000, Resistance))*100;
 
   if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0B, byte(Value), 0x00, 0x00, 0x00);
+    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0B, highByte(Value), lowByte(Value), 0x00, 0x00);
   } else {
     SendSerial("DeviceTemp:0x0B:" + String(Value));
   }
 }
 
-void MaxSensorChannel(int ReplyToAddress){
+void MaxSensorChannel(int ReplyToAddress) {
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0C, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
   } else {
@@ -750,7 +750,7 @@ void MaxSensorChannel(int ReplyToAddress){
   }
 }
 
-void MaxSensorChannelRange(int ReplyToAddress, int Channel){
+void MaxSensorChannelRange(int ReplyToAddress, int Channel) {
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0D, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
   } else {
@@ -758,7 +758,7 @@ void MaxSensorChannelRange(int ReplyToAddress, int Channel){
   }
 }
 
-void MinSensorChannelRange(int ReplyToAddress, int Channel){
+void MinSensorChannelRange(int ReplyToAddress, int Channel) {
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0E, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
   } else {
@@ -784,6 +784,43 @@ int SensorCode(int ChannelNumber) {
 
   return Value;
 }
+
+float ReadAnalog(int Samples, int PinNumber) {
+  long Sum = 0;
+  float Value = 0;
+  for (int x = 0; x < Samples; x++) {
+    Sum = Sum + analogRead(PinNumber);
+  }
+  Value = (Sum / Samples);
+  return Value;
+}
+
+float NTCReadInC(int R2, float ResistenceRead) {
+  /*
+     Using the Resistence that is calced from an ADC read, a known calibrated resistence
+     value, and https://en.wikipedia.org/wiki/Steinhart%E2%80%93Hart_equation to get the
+     tempetature from these values.
+
+     int R2 == Calibrated static resistor used
+     float ResistenceRead == Log() of the resistence value read
+  */
+  float c1 = 1.009249522e-03;
+  float c2 = 2.378405444e-04;
+  float c3 = 2.019202697e-07;
+  float C = (1.0 / (c1 + c2 * ResistenceRead + c3 * ResistenceRead * ResistenceRead * ResistenceRead)) - 273.15;
+  return C;
+}
+
+float ConvertCtoF(float C) {
+  float F = (1.8 * C) + 32;
+  return F;
+}
+
+float ConvertPSItoKPa(float PSI) {
+  float KPA = 6.8947572932 * PSI;
+  return KPA;
+}
+
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
 //----------------------------------------------------------------------------------------------------
