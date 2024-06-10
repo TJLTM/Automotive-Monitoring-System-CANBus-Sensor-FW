@@ -1,7 +1,6 @@
 #include <EEPROM.h>
 #include <SPI.h>
 
-
 //CAN_2515 or CAN_2518FD
 // #include "mcp2518fd_can.h"
 // mcp2518fd CAN(SPI_CS_PIN);  // Set CS pin
@@ -40,18 +39,13 @@ const char *const AcceptedCommands[] = {
   "UNITSYSTEM?",
   "RESETERROR",
   "REBOOT",
-  "TEMP?",
-  "MSC?"
 };
 
 const char* ParameterCommands[] = {
   "SETUNITSYSTEM",
   "SETSTREAMING",
   "SETPACINGTIME",
-  "SETDEVICEADDRESS",
-  "STATE",
-  "MAXRANGE",
-  "MINRANGE"
+  "SETDEVICEADDRESS"
 };
 
 
@@ -99,7 +93,6 @@ void loop() {
 //----------------------------------------------------------------------------------------------------
 void SendSerial(String Data, bool CR = true) {
   /*
-
   :param Data: String to be sent out of the Serial Port
   :type Data: String
   :return: None
@@ -242,14 +235,6 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       //SETDEVICEADDRESS
       SetDeviceAddress(ThingToTest.toInt());
       break;
-    case 4:
-      //STATE*channelNumber
-      if (ThingToTest.toInt() > 0 && ThingToTest.toInt() <= MaxChannelNumber) {
-        StatusResponse(-1, ThingToTest.toInt());
-      } else {
-        SendSerial("%R,Error,Invalid Parameter, 0 < x < " + MaxChannelNumber);
-      }
-      break;
   }
 }
 
@@ -280,14 +265,6 @@ void CommandToCall(int Index) {
       //REBOOT
       SendSerial("Rebooting:0x06");
       RebootDevice(-1);
-      break;
-    case 6:
-      //"TEMP?"
-      DeviceTemp(-1);
-      break;
-    case 7:
-      // "MSC?" Max Sensor Channel
-      MaxSensorChannel(-1);
       break;
   }
 }
@@ -769,22 +746,9 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
 
-
 //----------------------------------------------------------------------------------------------------
-//Specific Sensor Code
+//Device Temp
 //----------------------------------------------------------------------------------------------------
-int SensorCode(int ChannelNumber) {
-  /*
-  Read Sensor Value here for that channel 
-  convert that to fixed point value as an INT and return it. 
-  */
-
-  int Value = 0;
-
-
-  return Value;
-}
-
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
@@ -820,7 +784,24 @@ float ConvertPSItoKPa(float PSI) {
   float KPA = 6.8947572932 * PSI;
   return KPA;
 }
+//----------------------------------------------------------------------------------------------------
+//Enf Of Device Temp
+//----------------------------------------------------------------------------------------------------
 
+//----------------------------------------------------------------------------------------------------
+//Specific Sensor Code
+//----------------------------------------------------------------------------------------------------
+int SensorCode(int ChannelNumber) {
+  /*
+  Read Sensor Value here for that channel 
+  convert that to fixed point value as an INT and return it. 
+  */
+
+  int Value = 0;
+
+
+  return Value;
+}
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
 //----------------------------------------------------------------------------------------------------
