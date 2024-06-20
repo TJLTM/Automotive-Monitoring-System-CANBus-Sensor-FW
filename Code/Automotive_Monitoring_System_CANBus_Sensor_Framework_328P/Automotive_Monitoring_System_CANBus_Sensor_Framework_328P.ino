@@ -91,11 +91,11 @@ void loop() {
 //----------------------------------------------------------------------------------------------------
 void SendSerial(String Data, bool CR = true) {
   /*
-  :param Data: String to be sent out of the Serial Port
-  :type Data: String
-  :return: None
-  :rtype: None
-    */
+    :param Data: String to be sent out of the Serial Port
+    :type Data: String
+    :return: None
+    :rtype: None
+  */
   if (CR == true) {
     ComPort.println(Data);
   } else {
@@ -209,7 +209,9 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       //SETUNITSYSTEM
       if (ThingToTest == "I" || ThingToTest == "M") {
         char FilteredCommand = 'I';
-        if (ThingToTest == "M") { FilteredCommand = 'M'; }
+        if (ThingToTest == "M") {
+          FilteredCommand = 'M';
+        }
         UnitsSystemSet(-1, FilteredCommand);
       } else {
         SendSerial("%R,Error,Invalid Parameter, I or M");
@@ -306,10 +308,10 @@ void ResetError(int ReplyToAddress) {
 void CANBusSetup() {
 #if MAX_DATA_SIZE > 8
   /*
-      * To compatible with MCP2515 API,
-      * default mode is CAN_CLASSIC_MODE
-      * Now set to CANFD mode.
-      */
+        To compatible with MCP2515 API,
+        default mode is CAN_CLASSIC_MODE
+        Now set to CANFD mode.
+  */
   CAN.setMode(CAN_NORMAL_MODE);
 #endif
 
@@ -330,16 +332,16 @@ void CANBusRecieveCheck() {
 
   //type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
   /*
-     * MCP2515(or this driver) could not handle properly
-     * the data carried by remote frame
-     *
-     * Displayed type:
-     *
-     * 0x00: standard data frame
-     * 0x02: extended data frame
-     * 0x30: standard remote frame
-     * 0x32: extended remote frame
-     */
+       MCP2515(or this driver) could not handle properly
+       the data carried by remote frame
+
+       Displayed type:
+
+       0x00: standard data frame
+       0x02: extended data frame
+       0x30: standard remote frame
+       0x32: extended remote frame
+  */
 
   //Check if Discovery do not filter by ID
   if (cdata[2] == '?' && cdata[3] == 0xFF && cdata[4] == 0xFF && cdata[3] == 0x00) {
@@ -390,7 +392,7 @@ void CANBusRecieveCheck() {
           break;
         case 6:  //I/O
           if (WhatKindOfetter == 'S') {
-            IOSet(ReplyAddress,cdata[4],cdata[5]);
+            IOSet(ReplyAddress, cdata[4], cdata[5]);
           }
           break;
         case 7:  //Error?
@@ -432,6 +434,11 @@ void CANBusRecieveCheck() {
           if (WhatKindOfetter == '?') {
             MinSensorChannelRange(ReplyAddress, cdata[4]);
           }
+          break;
+        default:
+          ErrorNumber = 0x01;
+          GetError(ReplyAddress);
+          ErrorNumber = 0x00;
           break;
       }
     }
@@ -508,21 +515,21 @@ void UpdatePacingTime(int Data) {
 //----------------------------------------------------------------------------------------------------
 void DiscoveryResponse(int ReplyToAddress) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   CanBusSend(ReplyToAddress, 7, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x01, byte(DeviceType), byte(DeviceType), byte(DeviceType));
 }
 
 void GetError(int ReplyToAddress) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x07, byte(ErrorNumber), 0x00, 0x00, 0x00);
   } else {
@@ -539,11 +546,11 @@ void RebootDevice(int ReplyToAddress) {
 
 void StatusResponse(int ReplyToAddress, int ChannelNumber) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
 
   int ReturnedValue = SensorCode(ChannelNumber);
 
@@ -556,11 +563,11 @@ void StatusResponse(int ReplyToAddress, int ChannelNumber) {
 
 void StreamingModeResponse(int ReplyToAddress) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00);
   } else {
@@ -570,11 +577,11 @@ void StreamingModeResponse(int ReplyToAddress) {
 
 void StreamingModeSet(int ReplyToAddress, bool Data) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   if (Data == true || Data == false) {
     EEPROM.update(1, Data);
   }
@@ -583,11 +590,11 @@ void StreamingModeSet(int ReplyToAddress, bool Data) {
 
 void PacingResponse(int ReplyToAddress) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 6, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04, highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00);
   } else {
@@ -597,11 +604,11 @@ void PacingResponse(int ReplyToAddress) {
 
 void PacingSet(int ReplyToAddress, int Data) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   if (PacingValueCheck(Data) == true) {
     EEPROM.update(2, highByte(Data));
     EEPROM.update(3, lowByte(Data));
@@ -611,11 +618,11 @@ void PacingSet(int ReplyToAddress, int Data) {
 
 void UnitsSystemResponse(int ReplyToAddress) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
 
   if (ReplyToAddress != -1) {
     CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(GetUnitSystemFromMemory()), 0x00, 0x00, 0x00);
@@ -626,11 +633,11 @@ void UnitsSystemResponse(int ReplyToAddress) {
 
 void UnitsSystemSet(int ReplyToAddress, char Data) {
   /*
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
 
   if (Data == 'I' || Data == 'M') {
     EEPROM.update(4, Data);
@@ -641,11 +648,11 @@ void UnitsSystemSet(int ReplyToAddress, char Data) {
 void UnitsABRResponse(int ReplyToAddress) {
   /*
 
-  :param ReplyToAddress: reply address to put into the CAN packet header
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
+    :param ReplyToAddress: reply address to put into the CAN packet header
+    :type ReplyToAddress: int
+    :return: None
+    :rtype: None
+  */
   byte ABR = 0x00;
   switch (DeviceType) {
     case 1:  // Current
@@ -773,12 +780,12 @@ float ConvertPSItoKPa(float PSI) {
 //----------------------------------------------------------------------------------------------------
 //IO
 //----------------------------------------------------------------------------------------------------
-void IOSet(int ReplyToAddress, byte Idata, byte Odata){
+void IOSet(int ReplyToAddress, byte Idata, byte Odata) {
 
 }
 
-void IOGet(){
-  
+void IOGet() {
+
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -790,8 +797,8 @@ void IOGet(){
 //----------------------------------------------------------------------------------------------------
 int SensorCode(int ChannelNumber) {
   /*
-  Read Sensor Value here for that channel 
-  convert that to fixed point value as an INT and return it. 
+    Read Sensor Value here for that channel
+    convert that to fixed point value as an INT and return it.
   */
 
   int Value = ChannelNumber;
