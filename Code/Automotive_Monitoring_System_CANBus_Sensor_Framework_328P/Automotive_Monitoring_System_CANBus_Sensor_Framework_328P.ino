@@ -344,6 +344,17 @@ void CANBusRecieveCheck() {
   */
 
   //Check if Discovery do not filter by ID
+
+  Serial.print("got some CAN Data:ID:");
+  Serial.print(CAN.getCanId());
+  Serial.print(" Data:");
+  for (uint8_t i = 1; i < 8; i++) {
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(cdata[i],HEX);
+    Serial.print(",");
+  }
+  Serial.println();
   if (cdata[2] == '?' && cdata[3] == 0xFF && cdata[4] == 0xFF && cdata[3] == 0x00) {
     DiscoveryResponse(CAN.getCanId());
   } else {
