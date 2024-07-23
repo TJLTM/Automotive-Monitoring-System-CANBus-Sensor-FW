@@ -54,8 +54,9 @@ const char *ParameterCommands[] = {
 
 void setup() {
   ComPort.begin(115200);
-  GetDeviceAddressFromMemory();
-
+  //GetDeviceAddressFromMemory();
+  DeviceAddress = 100;
+  ComPort.println("CAN Bus Address: " + String(DeviceAddress));
   CANBusSetup();
 
   ComPort.print("UnitSystem:");
@@ -347,20 +348,23 @@ void CANBusRecieveCheck() {
 
   Serial.print("got some CAN Data:ID:");
   Serial.print(CAN.getCanId());
+  
   Serial.print(" Data:");
-  for (uint8_t i = 1; i < 8; i++) {
+  for (uint8_t i = 0; i < 8; i++) {
     Serial.print(i);
     Serial.print(": ");
     Serial.print(cdata[i],HEX);
     Serial.print(",");
   }
   Serial.println();
-  if (cdata[2] == '?' && cdata[3] == 0xFF && cdata[4] == 0xFF && cdata[3] == 0x00) {
+  
+  if (cdata[2] == 0x3F && cdata[3] == 0x01 && cdata[4] == 0x00 && cdata[5] == 0xFF && cdata[6] == 0xFF && cdata[7] == 0x00) {
     DiscoveryResponse(CAN.getCanId());
   } else {
     //Check if this is the target Device
-    uint32_t ReplyAddress = CAN.getCanId();
     int TargetIDinPacket = cdata[0] << 8 + cdata[1];
+    Serial.print("TargetIDinPacket:");
+    Serial.println(
     if (TargetIDinPacket == DeviceAddress) {
       int CommandNumber = cdata[3];
       int WhatKindOfetter = cdata[2];
@@ -531,7 +535,8 @@ void DiscoveryResponse(int ReplyToAddress) {
     :return: None
     :rtype: None
   */
-  CanBusSend(ReplyToAddress, 7, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x01, byte(DeviceType), byte(DeviceType), byte(DeviceType));
+  Serial.println("Getting Here");
+  CanBusSend(ReplyToAddress, 7, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x01, 0x00, byte(DeviceType), byte(DeviceType), byte(DeviceType));
 }
 
 void GetError(int ReplyToAddress) {
