@@ -364,22 +364,27 @@ void CANBusRecieveCheck() {
     //Check if this is the target Device
     int TargetIDinPacket = cdata[0] << 8 + cdata[1];
     Serial.print("TargetIDinPacket:");
-    Serial.println(
+    Serial.println(TargetIDinPacket);
     if (TargetIDinPacket == DeviceAddress) {
       int CommandNumber = cdata[3];
-      int WhatKindOfetter = cdata[2];
+      int WhatKindOfCommand = cdata[2];
+      int ReplyAddress = CAN.getCanId();
+      Serial.print("CommandNumber:");
+      Serial.print(CommandNumber);
+      Serial.print("  ::WhatKindOfCommand:");
+      Serial.println(WhatKindOfCommand);
       switch (CommandNumber) {
         case 2:  //State
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             //Query
             StatusResponse(ReplyAddress, cdata[4]);
           }
           break;
         case 3:  //Streaming
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             StreamingModeResponse(ReplyAddress);
           }
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             if (cdata[4] == 0x00) {
               StreamingModeSet(ReplyAddress, false);
             }
@@ -389,64 +394,64 @@ void CANBusRecieveCheck() {
           }
           break;
         case 4:  //Pacing
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             PacingResponse(ReplyAddress);
           }
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             int Data = cdata[4] << 8 + cdata[5];
             PacingSet(ReplyAddress, Data);
           }
           break;
         case 5:  //Unit System
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             UnitsSystemResponse(ReplyAddress);
           }
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             UnitsSystemSet(ReplyAddress, cdata[4]);
           }
           break;
         case 6:  //I/O
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             IOSet(ReplyAddress, cdata[4], cdata[5]);
           }
           break;
         case 7:  //Error?
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             GetError(ReplyAddress);
           }
           break;
         case 8:  //Unit ABR
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             UnitsABRResponse(ReplyAddress);
           }
           break;
         case 9:  //Error Reset
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             ResetError(ReplyAddress);
           }
           break;
         case 10:  //Reboot
-          if (WhatKindOfetter == 'S') {
+          if (WhatKindOfCommand == 'S') {
             RebootDevice(ReplyAddress);
           }
           break;
         case 11:  //Device Temp
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             DeviceTemp(ReplyAddress);
           }
           break;
         case 12:  //Max Sensor Channel
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             MaxSensorChannel(ReplyAddress);
           }
           break;
         case 13:  //Sensor Channel Range Max
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             MaxSensorChannelRange(ReplyAddress, cdata[4]);
           }
           break;
         case 14:  //Sensor Channel Range Min
-          if (WhatKindOfetter == '?') {
+          if (WhatKindOfCommand == '?') {
             MinSensorChannelRange(ReplyAddress, cdata[4]);
           }
           break;
