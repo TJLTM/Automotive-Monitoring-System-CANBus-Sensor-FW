@@ -27,7 +27,7 @@ long PacingTimer;
 #define DeviceType 0
 #define MaxChannelNumber 3
 int SensorPins[] = {A1, A2, A3, A4};
-int SensorType[] = {4, 4, 4, 4};
+int SensorType[] = {4, 4, 4, 1};
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
 
@@ -57,17 +57,14 @@ const char *ParameterCommands[] = {
 
 void setup() {
   ComPort.begin(115200);
-  //GetDeviceAddressFromMemory();
-  DeviceAddress = 100;
-  ComPort.println("CAN Bus Address: " + String(DeviceAddress));
+  GetDeviceAddressFromMemory();
   CANBusSetup();
 
   ComPort.print("UnitSystem:");
   ComPort.println(GetUnitSystemFromMemory());
 
   ComPort.print("Streaming:");
-  
-  //ComPort.println(GetStreamingFromMemory());
+  ComPort.println(GetStreamingFromMemory());
 
   ComPort.print("Pacing:");
   ComPort.println(GetPacingTimeFromMemory());
@@ -232,9 +229,8 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      if (PacingValueCheck(ThingToTest.toInt()) == true) {
+      
         PacingSet(-1, ThingToTest.toInt());
-      }
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -286,10 +282,11 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool PacingValueCheck(int Value) {
+bool WPacingValueCheck(int Value) {
   Serial.println("PacingValueCheck");
   Serial.println(Value);
   if (Value >= 250 && Value <= 65535) {
+    Serial.println("asdf");
     return true;
   } else {
     SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
@@ -509,47 +506,22 @@ char GetUnitSystemFromMemory() {
 int GetStreamingFromMemory() {
   //Read Stream Value out of EEPROM
   int TempValue = EEPROM.read(5);
-  if (TempValue != 0 || TempValue != 1) {
+  if (TempValue < 0 || TempValue > 1) {
     EEPROM.update(5, 0);
+    TempValue = 0;
   }
-  return 1;
+  return TempValue;
 }
 
 unsigned int GetPacingTimeFromMemory() {
-//  //Read Pacing value out of EEPROM
+  //Read Pacing value out of EEPROM
 //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-//  if (PacingValueCheck(Value) == false) {
-//    UpdatePacingTime(250);
-//    delay(100);
-//    Serial.print("EE3p2:");
-//    Serial.println(EEPROM.read(3));
-//    Serial.print("EE2p2:");
-//    Serial.println(EEPROM.read(2));
-//    Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-//    Serial.println(EEPROM.read(3) << 8);
-//    Serial.println(EEPROM.read(2));
-//    Serial.print("Reading it again:");
-//    Serial.println(Value);
+//  if (Value > 250 && Value < 65535) {
+//     EEPROM.update(3, highByte(250));
+//     EEPROM.update(2, lowByte(250));
 //  }
-  return 2000;
+  return 250;
 }
-
-void UpdatePacingTime(int Data) {
-  Serial.println("Updating Pacing Time");
-  Serial.println(Data);
-  Serial.println(highByte(Data));
-  Serial.println(lowByte(Data));
-  EEPROM.update(3, highByte(Data));
-  EEPROM.update(2, lowByte(Data));
-
-
-  Serial.print("EE3:");
-  Serial.println(EEPROM.read(3));
-  Serial.print("EE2:");
-  Serial.println(EEPROM.read(2));
-
-}
-
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -564,7 +536,6 @@ void DiscoveryResponse() {
     :return: None
     :rtype: None
   */
-  Serial.println("Getting Here");
   CanBusSend(byte(DeviceAddress), 7, 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()));
 }
 
@@ -662,9 +633,9 @@ void PacingSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  if (PacingValueCheck(Data) == true) {
-    EEPROM.update(2, highByte(Data));
-    EEPROM.update(3, lowByte(Data));
+  if (Data >= 250 && Data <= 65535) {
+     EEPROM.update(3, highByte(Data));
+     EEPROM.update(2, lowByte(Data));
   }
   PacingResponse(ReplyToAddress);
 }
@@ -853,9 +824,36 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
+  String Value = "0";
+  if (ChannelNumber < 2){
+   Value = PressureSensor(ChannelNumber);
+  }else{
+     Value = CurrentSensor(ChannelNumber);
+  }
+  
+  return Value.toInt();
+}
 
-  //This is for Pressure reading only
-  //Read adc do some conversion math to get what you want
+String CurrentSensor(int ChannelNumber){
+  int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
+  int Center = 511; //measure this from the device.
+  float AmpPerV = 0.04; //get this from DataSheet for sensor
+  int DNAdjusted = 0;
+  if (DN > Center) {
+    DNAdjusted = DN - Center; //positive case
+  }
+  if (DN < Center) {
+    DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
+    Serial.print(DNAdjusted);
+  }
+  float Amps = (DNAdjusted * (5/1023)) / AmpPerV;
+  Serial.print("Amps:");
+  Serial.println(Amps);
+  return String(round(Amps*10)).substring(0,String(round(Amps*10)).indexOf('.'));
+}
+
+String PressureSensor(int ChannelNumber){
+
   float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
   if (Pressure < 103){ // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear 
     Pressure = 0;
@@ -864,8 +862,7 @@ int SensorCode(int ChannelNumber) {
     Pressure = ConvertPSItoKPa(Pressure);
   }
 
-  String Value = String(round(Pressure*100)).substring(0,String(round(Pressure*100)).indexOf('.'));
-  return Value.toInt();
+  return String(round(Pressure*100)).substring(0,String(round(Pressure*100)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
