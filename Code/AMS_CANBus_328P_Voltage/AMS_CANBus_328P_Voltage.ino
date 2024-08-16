@@ -25,9 +25,11 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 //Device Configuration setting
 long PacingTimer;
 #define DeviceType 0
-#define MaxChannelNumber 1
-
+#define MaxChannelNumber 3
+int SensorPins[] = {A1, A2, A3, A4};
+int SensorType[] = {4, 4, 4, 4};
 uint8_t ErrorNumber = 0;
+char UNITS = 'I';
 
 #define ComPort Serial
 String inputString = "";  // a String to hold incoming data from ports
@@ -39,6 +41,7 @@ const char *const AcceptedCommands[] = {
   "UNITSYSTEM?",
   "RESETERROR",
   "REBOOT",
+  "PACING?",
 };
 
 const char *ParameterCommands[] = {
@@ -63,7 +66,8 @@ void setup() {
   ComPort.println(GetUnitSystemFromMemory());
 
   ComPort.print("Streaming:");
-  ComPort.println(GetStreamingFromMemory());
+  
+  //ComPort.println(GetStreamingFromMemory());
 
   ComPort.print("Pacing:");
   ComPort.println(GetPacingTimeFromMemory());
@@ -75,9 +79,9 @@ void loop() {
   CANBusRecieveCheck();
 
   long CurrentTime = millis();
-  if (GetStreamingFromMemory() == true) {
+  if (GetStreamingFromMemory() == 1) {
     if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
-      for (uint8_t i = 1; i <= MaxChannelNumber; i++) {
+      for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
         StatusResponse(i);
       }
       PacingTimer = CurrentTime;
@@ -267,6 +271,10 @@ void CommandToCall(int Index) {
       SendSerial("Rebooting:0x06");
       RebootDevice(-1);
       break;
+    case 6:
+      //PACING?
+      PacingResponse(-1);
+      break;
   }
 }
 //----------------------------------------------------------------------------------------------------
@@ -279,7 +287,9 @@ void CommandToCall(int Index) {
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
 bool PacingValueCheck(int Value) {
-  if (Value <= 250 || Value <= 65535) {
+  Serial.println("PacingValueCheck");
+  Serial.println(Value);
+  if (Value >= 250 && Value <= 65535) {
     return true;
   } else {
     SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
@@ -502,21 +512,42 @@ int GetStreamingFromMemory() {
   if (TempValue != 0 || TempValue != 1) {
     EEPROM.update(5, 0);
   }
-  return TempValue;
+  return 1;
 }
 
-int GetPacingTimeFromMemory() {
-  //Read Pacing value out of EEPROM
-  int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-  if (PacingValueCheck(Value) == false) {
-    UpdatePacingTime(250);
-  }
-  return Value;
+unsigned int GetPacingTimeFromMemory() {
+//  //Read Pacing value out of EEPROM
+//  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+//  if (PacingValueCheck(Value) == false) {
+//    UpdatePacingTime(250);
+//    delay(100);
+//    Serial.print("EE3p2:");
+//    Serial.println(EEPROM.read(3));
+//    Serial.print("EE2p2:");
+//    Serial.println(EEPROM.read(2));
+//    Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+//    Serial.println(EEPROM.read(3) << 8);
+//    Serial.println(EEPROM.read(2));
+//    Serial.print("Reading it again:");
+//    Serial.println(Value);
+//  }
+  return 2000;
 }
 
 void UpdatePacingTime(int Data) {
-  EEPROM.update(2, highByte(Data));
-  EEPROM.update(3, lowByte(Data));
+  Serial.println("Updating Pacing Time");
+  Serial.println(Data);
+  Serial.println(highByte(Data));
+  Serial.println(lowByte(Data));
+  EEPROM.update(3, highByte(Data));
+  EEPROM.update(2, lowByte(Data));
+
+
+  Serial.print("EE3:");
+  Serial.println(EEPROM.read(3));
+  Serial.print("EE2:");
+  Serial.println(EEPROM.read(2));
+
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -565,14 +596,18 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
+  if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
-  int ReturnedValue = SensorCode(ChannelNumber);
+    int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
 
-
-  CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue),byte(DeviceType), 0x00, 0x00, 0x00);
-
-  //SendSerial("StatusResponse:0x01:" + String(ReturnedValue) + ":" + String(DeviceType));
-
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
+  } else {
+    // return error that channel doesn't exist
+    ErrorNumber = 3;
+    SendSerial("Error:0x01"+ ErrorNumber);
+    ErrorNumber = 0;
+  }
 }
 
 void StreamingModeResponse(int ReplyToAddress) {
@@ -589,15 +624,19 @@ void StreamingModeResponse(int ReplyToAddress) {
   }
 }
 
-void StreamingModeSet(int ReplyToAddress, bool Data) {
+void StreamingModeSet(int ReplyToAddress, int Data) {
   /*
     :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (Data == true || Data == false) {
-    EEPROM.update(1, Data);
+  Serial.print("StreamingModeSet");
+  Serial.println(Data);
+  if (Data == 0 || Data == 1) {
+    EEPROM.update(5, Data);
+  }else{
+    Serial.print("Error");
   }
   StreamingModeResponse(ReplyToAddress);
 }
@@ -815,10 +854,18 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
 
-  int Value = ChannelNumber;
+  //This is for Pressure reading only
+  //Read adc do some conversion math to get what you want
+  float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
+  if (Pressure < 103){ // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear 
+    Pressure = 0;
+  }
+  if (UNITS == 'M') {
+    Pressure = ConvertPSItoKPa(Pressure);
+  }
 
-
-  return Value;
+  String Value = String(round(Pressure*100)).substring(0,String(round(Pressure*100)).indexOf('.'));
+  return Value.toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
