@@ -28,6 +28,8 @@ long PacingTimer;
 #define MaxChannelNumber 3
 int SensorPins[] = {A1, A2, A3, A4};
 int SensorType[] = {4, 4, 4, 1};
+int SensorMin[] = {0,0,0,-150};
+int SensorMax[] = {150,150,150,150};
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
 
@@ -229,8 +231,8 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      
-        PacingSet(-1, ThingToTest.toInt());
+
+      PacingSet(-1, ThingToTest.toInt());
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -480,12 +482,12 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
 //EEPROM Functions
 //----------------------------------------------------------------------------------------------------
 void SetDeviceAddress(int Address) {
-  if (Address >= 1 && Address <= 2047) {
+  if (Address >= 100 && Address <= 2047) {
     EEPROM.update(1, highByte(Address));
     EEPROM.update(0, lowByte(Address));
     GetDeviceAddressFromMemory();
   } else {
-    SendSerial("Address must be between 1 and 2047");
+    SendSerial("Address must be between 100 and 2047");
   }
 }
 
@@ -515,11 +517,11 @@ int GetStreamingFromMemory() {
 
 unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-//  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-//  if (Value > 250 && Value < 65535) {
-//     EEPROM.update(3, highByte(250));
-//     EEPROM.update(2, lowByte(250));
-//  }
+  //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+  //  if (Value > 250 && Value < 65535) {
+  //     EEPROM.update(3, highByte(250));
+  //     EEPROM.update(2, lowByte(250));
+  //  }
   return 250;
 }
 //----------------------------------------------------------------------------------------------------
@@ -576,7 +578,7 @@ void StatusResponse(int ChannelNumber) {
   } else {
     // return error that channel doesn't exist
     ErrorNumber = 3;
-    SendSerial("Error:0x01"+ ErrorNumber);
+    SendSerial("Error:0x01" + ErrorNumber);
     ErrorNumber = 0;
   }
 }
@@ -606,7 +608,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
   Serial.println(Data);
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
-  }else{
+  } else {
     Serial.print("Error");
   }
   StreamingModeResponse(ReplyToAddress);
@@ -634,8 +636,8 @@ void PacingSet(int ReplyToAddress, int Data) {
     :rtype: None
   */
   if (Data >= 250 && Data <= 65535) {
-     EEPROM.update(3, highByte(Data));
-     EEPROM.update(2, lowByte(Data));
+    EEPROM.update(3, highByte(Data));
+    EEPROM.update(2, lowByte(Data));
   }
   PacingResponse(ReplyToAddress);
 }
@@ -762,6 +764,15 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Device Temp
 //----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//Enf Of Device Temp
+//----------------------------------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------------------------------
+//Sensor Helpers
+//----------------------------------------------------------------------------------------------------
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
@@ -797,14 +808,19 @@ float ConvertPSItoKPa(float PSI) {
   float KPA = 6.8947572932 * PSI;
   return KPA;
 }
+
+String FloatToIntFixed(double Data, int NumberOfDecimals) {
+  int Multipler = pow(10, NumberOfDecimals);
+  return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
+}
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//Enf Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
 //IO
 //----------------------------------------------------------------------------------------------------
-void IOSet(int ReplyToAddress, byte Idata, byte Odata) {
+void IOSet(byte Idata, byte Odata) {
 
 }
 
@@ -824,45 +840,46 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
-  String Value = "0";
-  if (ChannelNumber < 2){
-   Value = PressureSensor(ChannelNumber);
-  }else{
-     Value = CurrentSensor(ChannelNumber);
+  int Value = 0;
+  if (ChannelNumber < 3) {
+    Value = PressureSensor(ChannelNumber);
+  } else {
+    Value = CurrentSensor(ChannelNumber);
   }
-  
-  return Value.toInt();
+
+  return Value;
 }
 
-String CurrentSensor(int ChannelNumber){
+int CurrentSensor(int ChannelNumber) {
   int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
   int Center = 511; //measure this from the device.
-  float AmpPerV = 0.04; //get this from DataSheet for sensor
+  double AmpPermV = 0.013275; //get this from DataSheet for sensor
   int DNAdjusted = 0;
   if (DN > Center) {
     DNAdjusted = DN - Center; //positive case
   }
   if (DN < Center) {
     DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
-    Serial.print(DNAdjusted);
   }
-  float Amps = (DNAdjusted * (5/1023)) / AmpPerV;
-  Serial.print("Amps:");
-  Serial.println(Amps);
-  return String(round(Amps*10)).substring(0,String(round(Amps*10)).indexOf('.'));
+  double Amps = ((DNAdjusted * 5) / 1023) / AmpPermV;
+  return FloatToIntFixed(Amps, 1).toInt();
 }
 
-String PressureSensor(int ChannelNumber){
-
+int PressureSensor(int ChannelNumber) {
   float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
-  if (Pressure < 103){ // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear 
+  if (Pressure < 103) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear
     Pressure = 0;
   }
   if (UNITS == 'M') {
     Pressure = ConvertPSItoKPa(Pressure);
   }
 
-  return String(round(Pressure*100)).substring(0,String(round(Pressure*100)).indexOf('.'));
+  return FloatToIntFixed(Pressure, 2).toInt();
+}
+
+int RTD(int ChannelNumber) {
+  float Temp = 99.123;
+  return FloatToIntFixed(Temp, 2).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
