@@ -1,5 +1,6 @@
 #include <EEPROM.h>
 #include <SPI.h>
+#include <Adafruit_MAX31865.h>
 
 //CAN_2515 or CAN_2518FD
 // #include "mcp2518fd_can.h"
@@ -25,11 +26,12 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 //Device Configuration setting
 long PacingTimer;
 #define DeviceType 0
-#define MaxChannelNumber 3
-int SensorPins[] = {A1, A2, A3, A4};
-int SensorType[] = {4, 4, 4, 1};
-int SensorMin[] = {0,0,0,-150};
-int SensorMax[] = {150,150,150,150};
+#define MaxChannelNumber 2
+int SensorMin[] = {0, 0, 0, -150};
+int SensorMax[] = {150, 150, 150, 150};
+Adafruit_MAX31865 Channel0 = Adafruit_MAX31865(3);
+Adafruit_MAX31865 Channel1 = Adafruit_MAX31865(4);
+Adafruit_MAX31865 Channel2 = Adafruit_MAX31865(5);
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
 
@@ -72,6 +74,10 @@ void setup() {
   ComPort.println(GetPacingTimeFromMemory());
 
   DiscoveryResponse();
+
+  Channel0.begin(MAX31865_3WIRE);
+  Channel1.begin(MAX31865_3WIRE);
+  Channel2.begin(MAX31865_3WIRE);
 }
 
 void loop() {
@@ -573,8 +579,8 @@ void StatusResponse(int ChannelNumber) {
 
     int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
 
-    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
-    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType), 0x00, 0x00, 0x00);
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(DeviceType));
   } else {
     // return error that channel doesn't exist
     ErrorNumber = 3;
@@ -804,11 +810,6 @@ float ConvertCtoF(float C) {
   return F;
 }
 
-float ConvertPSItoKPa(float PSI) {
-  float KPA = 6.8947572932 * PSI;
-  return KPA;
-}
-
 String FloatToIntFixed(double Data, int NumberOfDecimals) {
   int Multipler = pow(10, NumberOfDecimals);
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
@@ -841,40 +842,21 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
   int Value = 0;
-  if (ChannelNumber < 3) {
-    Value = PressureSensor(ChannelNumber);
-  } else {
-    Value = CurrentSensor(ChannelNumber);
+
+  uint16_t rtd2 = Channel0.readRTD();
+  if (Units == 'I') {
+     ConvertCtoF(Channel0.temperature(RNOMINAL, RREF));
+  }
+  else {
+     Channel0.temperature(RNOMINAL, RREF);
   }
 
+
+  
+
+
+  
   return Value;
-}
-
-int CurrentSensor(int ChannelNumber) {
-  int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
-  int Center = 511; //measure this from the device.
-  double AmpPermV = 0.013275; //get this from DataSheet for sensor
-  int DNAdjusted = 0;
-  if (DN > Center) {
-    DNAdjusted = DN - Center; //positive case
-  }
-  if (DN < Center) {
-    DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
-  }
-  double Amps = ((DNAdjusted * 5) / 1023) / AmpPermV;
-  return FloatToIntFixed(Amps, 1).toInt();
-}
-
-int PressureSensor(int ChannelNumber) {
-  float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
-  if (Pressure < 103) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear
-    Pressure = 0;
-  }
-  if (UNITS == 'M') {
-    Pressure = ConvertPSItoKPa(Pressure);
-  }
-
-  return FloatToIntFixed(Pressure, 2).toInt();
 }
 
 int RTD(int ChannelNumber) {
