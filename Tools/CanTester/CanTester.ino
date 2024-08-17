@@ -1,10 +1,18 @@
-#include <CAN.h>
+#include <EEPROM.h>
+#include <SPI.h>
+
+// CANBus
+#include "mcp2515_can.h"
+mcp2515_can CAN(9);
+#define MAX_DATA_SIZE 8
+byte cdata[MAX_DATA_SIZE] = { 0 };
+
 
 String inputString = "";      // a String to hold incoming data
 bool stringComplete = false;  // whether the string is complete
 
-int TargetDeviceAddress = 1;
-int ThisDeviceAddress = 0;
+int TargetDeviceAddress = 100;
+int ThisDeviceAddress = 1543;
 
 void setup() {
   // put your setup code here, to run once:
@@ -13,206 +21,127 @@ void setup() {
     ;
   inputString.reserve(200);
 
-  Serial.println("CAN Receiver");
-  CAN.setPins(9, 2);
-  // start the CAN bus at 500 kbps
-  if (!CAN.begin(500E3)) {
-    Serial.println("Starting CAN failed!");
-    while (1)
-      ;
-  }
+  CANBusSetup();
+}
 
-  CAN.onReceive(onReceive);
+void CANBusSetup() {
+#if MAX_DATA_SIZE > 8
+  /*
+        To compatible with MCP2515 API,
+        default mode is CAN_CLASSIC_MODE
+        Now set to CANFD mode.
+  */
+  CAN.setMode(CAN_NORMAL_MODE);
+#endif
+
+  while (CAN_OK != CAN.begin(CAN_500KBPS)) {  // init can bus : baudrate = 500k
+    Serial.println("CAN init fail, retrying. This is unlikely to recover");
+    delay(1000);
+  }
+  Serial.println(F("CAN init ok!"));
 }
 
 void loop() {
+  CANBusRecieveCheck();
+  delay(1000);
+  SendSomething("1");
+  delay(1000);
+}
+
+
+
+void Old(){
   // try to parse packet
 
   if (stringComplete) {
-
+    
     SendSomething(inputString);
     // clear the string:
     inputString = "";
     stringComplete = false;
+    Serial.println("Send which command? \n 0. Discovery\n 1. ");
   }
 }
 
 void SendSomething(String Command) {
-  byte DataPacket[8];
+  Serial.print(highByte(ThisDeviceAddress),HEX);
+  Serial.println(lowByte(ThisDeviceAddress),HEX);
   switch (Command.toInt()) {
     case 0:
       Serial.println("Discovery");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x01;
-      DataPacket[4] = 0x00;
-      DataPacket[5] = 0xFF;
-      DataPacket[6] = 0xFF;
-      DataPacket[7] = 0x00;
-      CANBusSend(7, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(ThisDeviceAddress),lowByte(ThisDeviceAddress),byte('?'),0x01,0x00,0xFF,0xFF,0x00);
       break;
     case 1:
       Serial.println("Status");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x02;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x02,0x00,0x00,0x00,0x00);
       break;
     case 2:
       Serial.println("Streaming Set 0");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x03;
-      DataPacket[4] = 0x00;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x03,0x00,0x00,0x00,0x00);
       break;
     case 3:
       Serial.println("Streaming Set 1");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x03;
-      DataPacket[4] = 0xFF;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x03,0xFF,0x00,0x00,0x00);
       break;
     case 4:
       Serial.println("Streaming Query");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x03;
-      CANBusSend(3, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x03,0x00,0x00,0x00,0x00);
       break;
     case 5:
       Serial.println("Pacing Set 0");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x04;
-      DataPacket[4] = 0x00;
-      DataPacket[5] = 0x00;
-      CANBusSend(5, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,0x00,0x00,0x00,0x00);
       break;
     case 6:
       Serial.println("Pacing Set 1000");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x04;
-      DataPacket[4] = highByte(1000);
-      DataPacket[5] = lowByte(1000);
-      CANBusSend(5, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,highByte(1000),lowByte(1000),0x00,0x00);
       break;
     case 7:
       Serial.println("Pacing Set 999999");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x04;
-      DataPacket[4] = highByte(999999);
-      DataPacket[5] = lowByte(999999);
-      CANBusSend(5, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,highByte(999999),lowByte(999999),0x00,0x00);
       break;
     case 8:
       Serial.println("Pacing Query");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x01;
-      DataPacket[4] = 0x00;
-      DataPacket[5] = 0xFF;
-      DataPacket[6] = 0xFF;
-      DataPacket[7] = 0x00;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x04,0x00,0x00,0x00,0x00);
       break;
     case 9:
       Serial.println("Unit System Set I");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x05;
-      DataPacket[4] = byte('I');
-      CANBusSend(5, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x05,byte('I'),0x00,0x00,0x00);
       break;
     case 10:
       Serial.println("Unit System Set M");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x05;
-      DataPacket[4] = byte('M');
-      CANBusSend(5, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x05,byte('M'),0x00,0x00,0x00);
       break;
     case 11:
       Serial.println("Unit System Query");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x05;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x05,0x00,0x00,0x00,0x00);
       break;
     case 12:
       Serial.println("Units");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x08;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x08,0x00,0x00,0x00,0x00);
       break;
     case 13:
       Serial.println("IO Query");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x06;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x06,0x00,0x00,0x00,0x00);
       break;
     case 14:
       Serial.println("IO Set Out1 to 1");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x06;
-      DataPacket[4] = 0x00;
-      DataPacket[5] = 0b00000001;
-      CANBusSend(6, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x06,0b00000001,0x00,0x00,0x00);
       break;
     case 15:
       Serial.println("IO Set Out1 to 0");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x06;
-      DataPacket[4] = 0x00;
-      DataPacket[5] = 0b00000001;
-      CANBusSend(6, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x06,0b00000000,0x00,0x00,0x00);
       break;
     case 16:
       Serial.println("Error State");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('?');
-      DataPacket[3] = 0x07;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x07,0x00,0x00,0x00,0x00);
       break;
     case 17:
       Serial.println("Reset Error State");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x07;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x07,0x00,0xFF,0xFF,0x00);
       break;
     case 18:
       Serial.println("Reboot Device");
-      DataPacket[0] = highByte(ThisDeviceAddress);
-      DataPacket[1] = lowByte(ThisDeviceAddress);
-      DataPacket[2] = byte('S');
-      DataPacket[3] = 0x10;
-      CANBusSend(4, false, DataPacket);
+      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x10,0x00,0x00,0x00,0x00);
       break;
     default:
       Serial.print("Commmand: ");
@@ -223,57 +152,55 @@ void SendSomething(String Command) {
 }
 
 
-void CANBusSend(int NumberOfBytes, bool RequestResponse, byte Data[]) {
+void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
+  // ID, ext, len, byte: data
+  //ext = 0 for standard frame
+  byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
+  Serial.print("Sending CAN Data:");
+  for (uint8_t i = 0; i < DataLength; i++) {
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(DataPacket[i],HEX);
+    Serial.print(",");
+  }
+  Serial.println();
+  
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+}
+
+void CANBusRecieveCheck() {
+  // check if data coming
+  if (CAN_MSGAVAIL != CAN.checkReceive()) {
+    return;
+  }
+
+  CAN.readMsgBuf(8, cdata);
+
+  //type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
   /*
+       MCP2515(or this driver) could not handle properly
+       the data carried by remote frame
 
-  :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-  :type ReplyToAddress: int
-  :return: None
-  :rtype: None
-    */
-  CAN.beginPacket(ThisDeviceAddress, NumberOfBytes, RequestResponse);
-  Serial.print("CAN Packet:");
-  for (uint8_t Index = 0; Index < (NumberOfBytes + 1); Index++) {
-    CAN.write(Data[Index]);
-    Serial.print(Data[Index], HEX);
+       Displayed type:
+
+       0x00: standard data frame
+       0x02: extended data frame
+       0x30: standard remote frame
+       0x32: extended remote frame
+  */
+
+  Serial.print("got some CAN Data:ID:");
+  Serial.print(CAN.getCanId());
+  Serial.print(" Data:");
+  for (uint8_t i = 1; i < 8; i++) {
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(cdata[i],HEX);
+    Serial.print(",");
   }
   Serial.println();
-  CAN.endPacket();
 }
 
-
-void onReceive(int packetSize) {
-  // received a packet
-  Serial.print("Received ");
-
-  if (CAN.packetExtended()) {
-    Serial.print("extended ");
-  }
-
-  if (CAN.packetRtr()) {
-    // Remote transmission request, packet contains no data
-    Serial.print("RTR ");
-  }
-
-  Serial.print("packet with id 0x");
-  Serial.print(CAN.packetId(), HEX);
-
-  if (CAN.packetRtr()) {
-    Serial.print(" and requested length ");
-    Serial.println(CAN.packetDlc());
-  } else {
-    Serial.print(" and length ");
-    Serial.println(packetSize);
-
-    // only print packet data for non-RTR packets
-    while (CAN.available()) {
-      Serial.print((char)CAN.read());
-    }
-    Serial.println();
-  }
-
-  Serial.println();
-}
 
 
 void serialEvent() {
