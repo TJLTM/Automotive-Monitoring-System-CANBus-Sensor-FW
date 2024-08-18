@@ -32,6 +32,9 @@ int SensorMax[] = {150, 150, 150, 150};
 Adafruit_MAX31865 Channel0 = Adafruit_MAX31865(3);
 Adafruit_MAX31865 Channel1 = Adafruit_MAX31865(4);
 Adafruit_MAX31865 Channel2 = Adafruit_MAX31865(5);
+#define RREF      430.0
+#define RNOMINAL  100.0
+
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
 
@@ -74,7 +77,11 @@ void setup() {
   ComPort.println(GetPacingTimeFromMemory());
 
   DiscoveryResponse();
-
+  /*
+      Please Reference Adafruit_MAX31865
+      docs for setup of these boards if
+      you are going to use 4 or 2 wire
+  */
   Channel0.begin(MAX31865_3WIRE);
   Channel1.begin(MAX31865_3WIRE);
   Channel2.begin(MAX31865_3WIRE);
@@ -772,7 +779,7 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//End Of Device Temp
 //----------------------------------------------------------------------------------------------------
 
 
@@ -815,22 +822,7 @@ String FloatToIntFixed(double Data, int NumberOfDecimals) {
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
-//Enf Of Sensor Helpers
-//----------------------------------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------------------------------
-//IO
-//----------------------------------------------------------------------------------------------------
-void IOSet(byte Idata, byte Odata) {
-
-}
-
-void IOGet() {
-
-}
-
-//----------------------------------------------------------------------------------------------------
-//Enf Of IO
+//End Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
@@ -842,26 +834,26 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
   int Value = 0;
-
-  uint16_t rtd2 = Channel0.readRTD();
-  if (Units == 'I') {
-     ConvertCtoF(Channel0.temperature(RNOMINAL, RREF));
+  switch (ChannelNumber) {
+    case 0:
+      uint16_t rtd0 = Channel0.readRTD();
+      Value = Channel0.temperature(RNOMINAL, RREF);
+      break;
+    case 1:
+      uint16_t rtd1 = Channel1.readRTD();
+      Value = Channel1.temperature(RNOMINAL, RREF);
+      break;
+    case 2:
+      uint16_t rtd2 = Channel2.readRTD();
+      Value = Channel2.temperature(RNOMINAL, RREF);
+      break;
   }
-  else {
-     Channel0.temperature(RNOMINAL, RREF);
+
+  if (UNITS == 'I') {
+    Value = ConvertCtoF(Value);
   }
 
-
-  
-
-
-  
-  return Value;
-}
-
-int RTD(int ChannelNumber) {
-  float Temp = 99.123;
-  return FloatToIntFixed(Temp, 2).toInt();
+  return FloatToIntFixed(Value, 2).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
