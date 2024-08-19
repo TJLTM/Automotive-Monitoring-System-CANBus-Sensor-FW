@@ -25,9 +25,13 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 //Device Configuration setting
 long PacingTimer;
 #define DeviceType 0
-#define MaxChannelNumber 1
-
+#define MaxChannelNumber 3
+int SensorPins[] = {A1, A2, A3, A4};
+int SensorType[] = {4, 4, 4, 1};
+int SensorMin[] = {0,0,0,-150};
+int SensorMax[] = {150,150,150,150};
 uint8_t ErrorNumber = 0;
+char UNITS = 'I';
 
 #define ComPort Serial
 String inputString = "";  // a String to hold incoming data from ports
@@ -39,6 +43,7 @@ const char *const AcceptedCommands[] = {
   "UNITSYSTEM?",
   "RESETERROR",
   "REBOOT",
+  "PACING?",
 };
 
 const char *ParameterCommands[] = {
@@ -54,9 +59,7 @@ const char *ParameterCommands[] = {
 
 void setup() {
   ComPort.begin(115200);
-  //GetDeviceAddressFromMemory();
-  DeviceAddress = 100;
-  ComPort.println("CAN Bus Address: " + String(DeviceAddress));
+  GetDeviceAddressFromMemory();
   CANBusSetup();
 
   ComPort.print("UnitSystem:");
@@ -75,9 +78,9 @@ void loop() {
   CANBusRecieveCheck();
 
   long CurrentTime = millis();
-  if (GetStreamingFromMemory() == true) {
+  if (GetStreamingFromMemory() == 1) {
     if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
-      for (uint8_t i = 1; i <= MaxChannelNumber; i++) {
+      for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
         StatusResponse(i);
       }
       PacingTimer = CurrentTime;
@@ -228,9 +231,8 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      if (PacingValueCheck(ThingToTest.toInt()) == true) {
-        PacingSet(-1, ThingToTest.toInt());
-      }
+
+      PacingSet(-1, ThingToTest.toInt());
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -267,6 +269,10 @@ void CommandToCall(int Index) {
       SendSerial("Rebooting:0x06");
       RebootDevice(-1);
       break;
+    case 6:
+      //PACING?
+      PacingResponse(-1);
+      break;
   }
 }
 //----------------------------------------------------------------------------------------------------
@@ -278,8 +284,11 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool PacingValueCheck(int Value) {
-  if (Value <= 250 || Value <= 65535) {
+bool WPacingValueCheck(int Value) {
+  Serial.println("PacingValueCheck");
+  Serial.println(Value);
+  if (Value >= 250 && Value <= 65535) {
+    Serial.println("asdf");
     return true;
   } else {
     SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
@@ -473,12 +482,12 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
 //EEPROM Functions
 //----------------------------------------------------------------------------------------------------
 void SetDeviceAddress(int Address) {
-  if (Address >= 1 && Address <= 2047) {
+  if (Address >= 100 && Address <= 2047) {
     EEPROM.update(1, highByte(Address));
     EEPROM.update(0, lowByte(Address));
     GetDeviceAddressFromMemory();
   } else {
-    SendSerial("Address must be between 1 and 2047");
+    SendSerial("Address must be between 100 and 2047");
   }
 }
 
@@ -499,26 +508,22 @@ char GetUnitSystemFromMemory() {
 int GetStreamingFromMemory() {
   //Read Stream Value out of EEPROM
   int TempValue = EEPROM.read(5);
-  if (TempValue != 0 || TempValue != 1) {
+  if (TempValue < 0 || TempValue > 1) {
     EEPROM.update(5, 0);
+    TempValue = 0;
   }
   return TempValue;
 }
 
-int GetPacingTimeFromMemory() {
+unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-  if (PacingValueCheck(Value) == false) {
-    UpdatePacingTime(250);
-  }
-  return Value;
+  //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+  //  if (Value > 250 && Value < 65535) {
+  //     EEPROM.update(3, highByte(250));
+  //     EEPROM.update(2, lowByte(250));
+  //  }
+  return 250;
 }
-
-void UpdatePacingTime(int Data) {
-  EEPROM.update(2, highByte(Data));
-  EEPROM.update(3, lowByte(Data));
-}
-
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -533,7 +538,6 @@ void DiscoveryResponse() {
     :return: None
     :rtype: None
   */
-  Serial.println("Getting Here");
   CanBusSend(byte(DeviceAddress), 7, 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()));
 }
 
@@ -565,14 +569,18 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
+  if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
-  int ReturnedValue = SensorCode(ChannelNumber);
+    int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
 
-
-  CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue),byte(DeviceType), 0x00, 0x00, 0x00);
-
-  //SendSerial("StatusResponse:0x01:" + String(ReturnedValue) + ":" + String(DeviceType));
-
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
+  } else {
+    // return error that channel doesn't exist
+    ErrorNumber = 3;
+    SendSerial("Error:0x01" + ErrorNumber);
+    ErrorNumber = 0;
+  }
 }
 
 void StreamingModeResponse(int ReplyToAddress) {
@@ -589,15 +597,19 @@ void StreamingModeResponse(int ReplyToAddress) {
   }
 }
 
-void StreamingModeSet(int ReplyToAddress, bool Data) {
+void StreamingModeSet(int ReplyToAddress, int Data) {
   /*
     :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (Data == true || Data == false) {
-    EEPROM.update(1, Data);
+  Serial.print("StreamingModeSet");
+  Serial.println(Data);
+  if (Data == 0 || Data == 1) {
+    EEPROM.update(5, Data);
+  } else {
+    Serial.print("Error");
   }
   StreamingModeResponse(ReplyToAddress);
 }
@@ -623,9 +635,9 @@ void PacingSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  if (PacingValueCheck(Data) == true) {
-    EEPROM.update(2, highByte(Data));
-    EEPROM.update(3, lowByte(Data));
+  if (Data >= 250 && Data <= 65535) {
+    EEPROM.update(3, highByte(Data));
+    EEPROM.update(2, lowByte(Data));
   }
   PacingResponse(ReplyToAddress);
 }
@@ -752,6 +764,15 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Device Temp
 //----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//Enf Of Device Temp
+//----------------------------------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------------------------------
+//Sensor Helpers
+//----------------------------------------------------------------------------------------------------
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
@@ -787,14 +808,19 @@ float ConvertPSItoKPa(float PSI) {
   float KPA = 6.8947572932 * PSI;
   return KPA;
 }
+
+String FloatToIntFixed(double Data, int NumberOfDecimals) {
+  int Multipler = pow(10, NumberOfDecimals);
+  return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
+}
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//Enf Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
 //IO
 //----------------------------------------------------------------------------------------------------
-void IOSet(int ReplyToAddress, byte Idata, byte Odata) {
+void IOSet(byte Idata, byte Odata) {
 
 }
 
@@ -814,11 +840,46 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
-
-  int Value = ChannelNumber;
-
+  int Value = 0;
+  if (ChannelNumber < 3) {
+    Value = PressureSensor(ChannelNumber);
+  } else {
+    Value = CurrentSensor(ChannelNumber);
+  }
 
   return Value;
+}
+
+int CurrentSensor(int ChannelNumber) {
+  int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
+  int Center = 511; //measure this from the device.
+  double AmpPermV = 0.013275; //get this from DataSheet for sensor
+  int DNAdjusted = 0;
+  if (DN > Center) {
+    DNAdjusted = DN - Center; //positive case
+  }
+  if (DN < Center) {
+    DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
+  }
+  double Amps = ((DNAdjusted * 5) / 1023) / AmpPermV;
+  return FloatToIntFixed(Amps, 1).toInt();
+}
+
+int PressureSensor(int ChannelNumber) {
+  float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
+  if (Pressure < 103) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear
+    Pressure = 0;
+  }
+  if (UNITS == 'M') {
+    Pressure = ConvertPSItoKPa(Pressure);
+  }
+
+  return FloatToIntFixed(Pressure, 2).toInt();
+}
+
+int RTD(int ChannelNumber) {
+  float Temp = 99.123;
+  return FloatToIntFixed(Temp, 2).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
