@@ -774,6 +774,7 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 float ReadAnalog(int Samples, int PinNumber) {
+  
   long Sum = 0;
   float Value = 0;
   for (int x = 0; x < Samples; x++) {
@@ -810,7 +811,7 @@ float ConvertPSItoKPa(float PSI) {
 }
 
 String FloatToIntFixed(double Data, int NumberOfDecimals) {
-  int Multipler = pow(10, NumberOfDecimals);
+  double Multipler = pow(10, NumberOfDecimals);
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
@@ -853,7 +854,7 @@ int SensorCode(int ChannelNumber) {
 int CurrentSensor(int ChannelNumber) {
   int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
   int Center = 511; //measure this from the device.
-  double AmpPermV = 0.013275; //get this from DataSheet for sensor
+  double AmpPermV = 0.013275; //get this from DataSheet for sensor or do a bit of calibration yourself
   int DNAdjusted = 0;
   if (DN > Center) {
     DNAdjusted = DN - Center; //positive case
@@ -866,8 +867,8 @@ int CurrentSensor(int ChannelNumber) {
 }
 
 int PressureSensor(int ChannelNumber) {
-  float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
-  if (Pressure < 103) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear
+  float Pressure = 25.00 * 0.0048875 * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5; //PSI reading cause i work in freedom units
+  if (Pressure <= 0) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear anything less than 0.5volts zero PSI
     Pressure = 0;
   }
   if (UNITS == 'M') {
@@ -875,11 +876,6 @@ int PressureSensor(int ChannelNumber) {
   }
 
   return FloatToIntFixed(Pressure, 2).toInt();
-}
-
-int RTD(int ChannelNumber) {
-  float Temp = 99.123;
-  return FloatToIntFixed(Temp, 2).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
