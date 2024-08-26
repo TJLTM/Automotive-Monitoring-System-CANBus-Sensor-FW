@@ -4,6 +4,7 @@
 Adafruit_MAX31865 thermo0 = Adafruit_MAX31865(3);
 Adafruit_MAX31865 thermo1 = Adafruit_MAX31865(4);
 Adafruit_MAX31865 thermo2 = Adafruit_MAX31865(5);
+bool IsThereAFault = false;
 
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      430.0
@@ -26,110 +27,57 @@ void setup() {
 
 void loop() {
   delay(1000);
-  Serial.print("Channel 0:");
-  uint16_t rtd0 = thermo0.readRTD();
-  Serial.print("RTD0 value: "); Serial.println(rtd0);
-  float ratio0 = rtd0;
-  ratio0 /= 32768;
-  Serial.print("Ratio0 = "); Serial.println(ratio0,8);
-  Serial.print("Resistance0 = "); Serial.println(RREF*ratio0,8);
-  Serial.print("Temperature0 = "); Serial.println(thermo0.temperature(RNOMINAL, RREF));
-
-  uint8_t fault = thermo0.readFault();
-  if (fault) {
-    Serial.print("Fault 0x"); Serial.println(fault, HEX);
-    if (fault & MAX31865_FAULT_HIGHTHRESH) {
-      Serial.println("RTD High Threshold"); 
-    }
-    if (fault & MAX31865_FAULT_LOWTHRESH) {
-      Serial.println("RTD Low Threshold"); 
-    }
-    if (fault & MAX31865_FAULT_REFINLOW) {
-      Serial.println("REFIN- > 0.85 x Bias"); 
-    }
-    if (fault & MAX31865_FAULT_REFINHIGH) {
-      Serial.println("REFIN- < 0.85 x Bias - FORCE- open"); 
-    }
-    if (fault & MAX31865_FAULT_RTDINLOW) {
-      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open"); 
-    }
-    if (fault & MAX31865_FAULT_OVUV) {
-      Serial.println("Under/Over voltage"); 
-    }
-    thermo0.clearFault();
-  }
-
-
-  
-
+  Serial.print("Themo0:");
+  Serial.println(RTDReadAndFaultCheck(thermo0));
   delay(1000);
-  Serial.print("Channel 1:");
-  uint16_t rtd1 = thermo1.readRTD();
-  Serial.print("RTD1 value: "); Serial.println(rtd1);
-  float ratio1 = rtd1;
-  ratio1 /= 32768;
-  Serial.print("Ratio1 = "); Serial.println(ratio1,8);
-  Serial.print("Resistance1 = "); Serial.println(RREF*ratio1,8);
-  Serial.print("Temperature1 = "); Serial.println(thermo1.temperature(RNOMINAL, RREF));
-
-  fault = thermo1.readFault();
-  if (fault) {
-    Serial.print("Fault 0x"); Serial.println(fault, HEX);
-    if (fault & MAX31865_FAULT_HIGHTHRESH) {
-      Serial.println("RTD High Threshold"); 
-    }
-    if (fault & MAX31865_FAULT_LOWTHRESH) {
-      Serial.println("RTD Low Threshold"); 
-    }
-    if (fault & MAX31865_FAULT_REFINLOW) {
-      Serial.println("REFIN- > 0.85 x Bias"); 
-    }
-    if (fault & MAX31865_FAULT_REFINHIGH) {
-      Serial.println("REFIN- < 0.85 x Bias - FORCE- open"); 
-    }
-    if (fault & MAX31865_FAULT_RTDINLOW) {
-      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open"); 
-    }
-    if (fault & MAX31865_FAULT_OVUV) {
-      Serial.println("Under/Over voltage"); 
-    }
-    thermo1.clearFault();
-  }
-
-
+  Serial.print("Themo1:");
+  Serial.println(RTDReadAndFaultCheck(thermo1));
   delay(1000);
-  Serial.print("Channel 2:");
-  uint16_t rtd2 = thermo2.readRTD();
-  Serial.print("RTD2 value: "); Serial.println(rtd2);
-  float ratio2 = rtd2;
-  ratio2 /= 32768;
-  Serial.print("Ratio2 = "); Serial.println(ratio2,8);
-  Serial.print("Resistance2 = "); Serial.println(RREF*ratio2,8);
-  Serial.print("Temperature2 = "); Serial.println(thermo2.temperature(RNOMINAL, RREF));
+  Serial.print("Themo2:");
+  Serial.println(RTDReadAndFaultCheck(thermo2));
 
-  fault = thermo2.readFault();
+}
+
+
+
+double RTDReadAndFaultCheck(Adafruit_MAX31865 &thermo) {
+  IsThereAFault = false;
+  uint16_t rtd = thermo.readRTD();
+  float ratio = rtd;
+  ratio /= 32768;
+  float Resistance = RREF * ratio;
+  double Temp = thermo.temperature(RNOMINAL, RREF);
+  uint8_t fault = thermo.readFault();
+
   if (fault) {
+    Temp = 0.0;
     Serial.print("Fault 0x"); Serial.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
-      Serial.println("RTD High Threshold"); 
+      Serial.println("RTD High Threshold");
     }
     if (fault & MAX31865_FAULT_LOWTHRESH) {
-      Serial.println("RTD Low Threshold"); 
+      Serial.println("RTD Low Threshold");
     }
     if (fault & MAX31865_FAULT_REFINLOW) {
-      Serial.println("REFIN- > 0.85 x Bias"); 
+      Serial.println("REFIN- > 0.85 x Bias");
     }
     if (fault & MAX31865_FAULT_REFINHIGH) {
-      Serial.println("REFIN- < 0.85 x Bias - FORCE- open"); 
+      Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
     }
     if (fault & MAX31865_FAULT_RTDINLOW) {
-      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open"); 
+      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
     }
     if (fault & MAX31865_FAULT_OVUV) {
-      Serial.println("Under/Over voltage"); 
+      Serial.println("Under/Over voltage");
     }
-    thermo2.clearFault();
+    thermo.clearFault();
+  } else {
+    if (Resistance == 0 && Temp == -1)
+    {
+      Temp = 0.0;
+      Serial.println("Reading zero resistance can you communicate to the chip?");
+    }
   }
 
-
+  return Temp;
 }
