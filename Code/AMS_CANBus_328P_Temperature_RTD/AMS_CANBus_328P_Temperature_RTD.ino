@@ -25,7 +25,7 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 
 //Device Configuration setting
 long PacingTimer;
-#define DeviceType 0
+#define DeviceType 2
 #define MaxChannelNumber 2
 int SensorMin[] = { -40, -40, -40};
 int SensorMax[] = {650, 650, 650};
@@ -482,7 +482,7 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -863,8 +863,8 @@ int SensorCode(int ChannelNumber) {
   if (UNITS == 'I') {
     Value = ConvertCtoF(Value);
   }
-
-  return FloatToIntFixed(Value, 2).toInt();
+  Serial.println("Value:"+String(Value));
+  return FloatToIntFixed(Value, 1).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
