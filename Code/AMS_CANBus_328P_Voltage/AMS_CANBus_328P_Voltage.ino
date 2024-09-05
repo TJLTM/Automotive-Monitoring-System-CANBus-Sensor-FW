@@ -471,7 +471,8 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+  //byte DataPacket[8] = { 0x01, 0x00, highByte(140),lowByte(140), 0x04, 0x00, 0x00, 0x00 };
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -572,8 +573,8 @@ void StatusResponse(int ChannelNumber) {
   if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
     int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
-
-    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
+    
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
@@ -862,7 +863,7 @@ int CurrentSensor(int ChannelNumber) {
   if (DN < Center) {
     DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
   }
-  double Amps = ((DNAdjusted * 5) / 1023) / AmpPermV;
+  double Amps = (DNAdjusted * 0.00488758) / AmpPermV;
   return FloatToIntFixed(Amps, 1).toInt();
 }
 

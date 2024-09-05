@@ -100,13 +100,13 @@ void CANBusRecieveCheck() {
   int ID = CAN.getCanId();
   int CommandNumber = cdata[0];
   int OtherData = cdata[1];
-  //Serial.print("CommandNumber:");
-  //Serial.print(CommandNumber);
-  //Serial.print("  ::OtherData:");
-  //Serial.println(OtherData);
+//  Serial.print("CommandNumber:");
+//  Serial.print(CommandNumber);
+//  Serial.print("  ::OtherData:");
+//  Serial.println(OtherData);
   switch (CommandNumber) {
     case 1:  //State
-      SensorParsing(ID, cdata[1], cdata[2] << 8 + cdata[3], cdata[4]);
+      SensorParsing(ID, cdata[1], cdata[2] << 8 | cdata[3], cdata[4]);
       break;
     default:
       String Message = "Raw CANBus," + String(ID) + ",";
@@ -129,28 +129,28 @@ void SensorParsing(int ID, int ChannelNumber, int Value, int DeviceType) {
   double HRValue = double(Value);
   switch (DeviceType) {
     case 1:  //Current
-      Message = ",Current," + String(HRValue / 10.0);
+      Message += ",Current," + String(ChannelNumber) + "," + String(HRValue / 10.0);
       break;
     case 2:  //Temp
-      Message = ",Temperature," + String(HRValue / 10.0);
+      Message += ",Temperature,"  + String(ChannelNumber) + "," + String(HRValue / 10.0);
       break;
     case 3:  //Votlage
-      Message = ",Votlage," + String(DeviceType) + ",Not Supported";
+      Message += ",Votlage," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     case 4:  //Pressure
-      Message = ",Pressuse," + String(HRValue / 10.0);
+      Message += ",Pressure," + String(ChannelNumber) + "," + String(HRValue / 100.0);
       break;
     case 5:  //Vacuum
-      Message = ",Vacuum," + String(DeviceType) + ",Not Supported";
+      Message += ",Vacuum," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     case 6:  //IO
-      Message = ",IO," + String(DeviceType) + ",Not Supported";
+      Message += ",IO," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     case 7:  //RPM
-      Message = ",RPM," + String(DeviceType) + ",Not Supported";
+      Message += ",RPM," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     default:
-      Message = "," + String(DeviceType) + ",Not Supported";
+      Message += "," + String(ChannelNumber) + "," + String(DeviceType) + "," +String(Value) + ",Not Supported";
       break;
   }
 
