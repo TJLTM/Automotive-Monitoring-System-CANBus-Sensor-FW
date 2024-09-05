@@ -17,7 +17,7 @@
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
-int DeviceAddress = 1;
+int DeviceAddress = 200;
 //uint32_t id;
 //uint8_t type;  // bit0: ext, bit1: rtr
 //const uint8_t len;
@@ -27,11 +27,12 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 long PacingTimer;
 #define DeviceType 0
 #define MaxChannelNumber 2
-int SensorMin[] = {0, 0, 0, -150};
-int SensorMax[] = {150, 150, 150, 150};
+int SensorMin[] = { -40, -40, -40};
+int SensorMax[] = {650, 650, 650};
 Adafruit_MAX31865 Channel0 = Adafruit_MAX31865(3);
 Adafruit_MAX31865 Channel1 = Adafruit_MAX31865(4);
 Adafruit_MAX31865 Channel2 = Adafruit_MAX31865(5);
+Adafruit_MAX31865 *RTDPointers [3] = {&Channel0, &Channel1, &Channel2};
 #define RREF      430.0
 #define RNOMINAL  100.0
 
@@ -309,12 +310,9 @@ bool WPacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number) {
-  switch (Number) {
-    case 1:
-      ErrorNumber = 1;
-      break;
-  }
+void SetError(int Number, int CommandNumber) {
+  ErrorNumber = Number;
+
 }
 
 void ResetError(int ReplyToAddress) {
@@ -834,19 +832,32 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
   int Value = 0;
-  switch (ChannelNumber) {
-    case 0:
-      uint16_t rtd0 = Channel0.readRTD();
-      Value = Channel0.temperature(RNOMINAL, RREF);
-      break;
-    case 1:
-      uint16_t rtd1 = Channel1.readRTD();
-      Value = Channel1.temperature(RNOMINAL, RREF);
-      break;
-    case 2:
-      uint16_t rtd2 = Channel2.readRTD();
-      Value = Channel2.temperature(RNOMINAL, RREF);
-      break;
+  float Temp = RTDPointers[ChannelNumber]->temperature(RNOMINAL, RREF);
+  uint8_t fault = RTDPointers[ChannelNumber]->readFault();
+
+  if (fault) {
+    SetError(4, 1);
+    Temp = 0.0;
+    Serial.print("Fault 0x"); Serial.println(fault, HEX);
+    if (fault & MAX31865_FAULT_HIGHTHRESH) {
+      Serial.println("RTD High Threshold");
+    }
+    if (fault & MAX31865_FAULT_LOWTHRESH) {
+      Serial.println("RTD Low Threshold");
+    }
+    if (fault & MAX31865_FAULT_REFINLOW) {
+      Serial.println("REFIN- > 0.85 x Bias");
+    }
+    if (fault & MAX31865_FAULT_REFINHIGH) {
+      Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865_FAULT_RTDINLOW) {
+      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865_FAULT_OVUV) {
+      Serial.println("Under/Over voltage");
+    }
+    RTDPointers[ChannelNumber]->clearFault();
   }
 
   if (UNITS == 'I') {
