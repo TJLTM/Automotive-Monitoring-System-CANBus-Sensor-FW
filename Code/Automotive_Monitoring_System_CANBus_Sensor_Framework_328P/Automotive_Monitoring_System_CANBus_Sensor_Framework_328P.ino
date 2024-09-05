@@ -28,6 +28,7 @@ long PacingTimer;
 #define MaxChannelNumber 1
 
 uint8_t ErrorNumber = 0;
+char UNITS = 'I';
 
 #define ComPort Serial
 String inputString = "";  // a String to hold incoming data from ports
@@ -39,6 +40,7 @@ const char *const AcceptedCommands[] = {
   "UNITSYSTEM?",
   "RESETERROR",
   "REBOOT",
+  "PACING?",
 };
 
 const char *ParameterCommands[] = {
@@ -54,9 +56,7 @@ const char *ParameterCommands[] = {
 
 void setup() {
   ComPort.begin(115200);
-  //GetDeviceAddressFromMemory();
-  DeviceAddress = 100;
-  ComPort.println("CAN Bus Address: " + String(DeviceAddress));
+  GetDeviceAddressFromMemory();
   CANBusSetup();
 
   ComPort.print("UnitSystem:");
@@ -75,9 +75,9 @@ void loop() {
   CANBusRecieveCheck();
 
   long CurrentTime = millis();
-  if (GetStreamingFromMemory() == true) {
+  if (GetStreamingFromMemory() == 1) {
     if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
-      for (uint8_t i = 1; i <= MaxChannelNumber; i++) {
+      for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
         StatusResponse(i);
       }
       PacingTimer = CurrentTime;
@@ -267,6 +267,10 @@ void CommandToCall(int Index) {
       SendSerial("Rebooting:0x06");
       RebootDevice(-1);
       break;
+    case 6:
+      //PACING?
+      PacingResponse(-1);
+      break;
   }
 }
 //----------------------------------------------------------------------------------------------------
@@ -287,12 +291,9 @@ bool PacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number) {
-  switch (Number) {
-    case 1:
-      ErrorNumber = 1;
-      break;
-  }
+void SetError(int Number, int CommandNumber) {
+  ErrorNumber = Number;
+
 }
 
 void ResetError(int ReplyToAddress) {
@@ -462,7 +463,7 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -473,12 +474,12 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
 //EEPROM Functions
 //----------------------------------------------------------------------------------------------------
 void SetDeviceAddress(int Address) {
-  if (Address >= 1 && Address <= 2047) {
+  if (Address >= 100 && Address <= 2047) {
     EEPROM.update(1, highByte(Address));
     EEPROM.update(0, lowByte(Address));
     GetDeviceAddressFromMemory();
   } else {
-    SendSerial("Address must be between 1 and 2047");
+    SendSerial("Address must be between 100 and 2047");
   }
 }
 
@@ -499,19 +500,21 @@ char GetUnitSystemFromMemory() {
 int GetStreamingFromMemory() {
   //Read Stream Value out of EEPROM
   int TempValue = EEPROM.read(5);
-  if (TempValue != 0 || TempValue != 1) {
+  if (TempValue < 0 || TempValue > 1) {
     EEPROM.update(5, 0);
+    TempValue = 0;
   }
   return TempValue;
 }
 
-int GetPacingTimeFromMemory() {
+unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-  if (PacingValueCheck(Value) == false) {
-    UpdatePacingTime(250);
-  }
-  return Value;
+  //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+  //  if (Value > 250 && Value < 65535) {
+  //     EEPROM.update(3, highByte(250));
+  //     EEPROM.update(2, lowByte(250));
+  //  }
+  return 250;
 }
 
 void UpdatePacingTime(int Data) {
@@ -533,7 +536,6 @@ void DiscoveryResponse() {
     :return: None
     :rtype: None
   */
-  Serial.println("Getting Here");
   CanBusSend(byte(DeviceAddress), 7, 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()));
 }
 
@@ -565,6 +567,7 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
+  if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
   int ReturnedValue = SensorCode(ChannelNumber);
 
@@ -572,7 +575,12 @@ void StatusResponse(int ChannelNumber) {
   CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue),byte(DeviceType), 0x00, 0x00, 0x00);
 
   //SendSerial("StatusResponse:0x01:" + String(ReturnedValue) + ":" + String(DeviceType));
-
+}else {
+    // return error that channel doesn't exist
+    ErrorNumber = 3;
+    SendSerial("Error:0x01" + ErrorNumber);
+    ErrorNumber = 0;
+  }
 }
 
 void StreamingModeResponse(int ReplyToAddress) {
@@ -589,15 +597,18 @@ void StreamingModeResponse(int ReplyToAddress) {
   }
 }
 
-void StreamingModeSet(int ReplyToAddress, bool Data) {
+void StreamingModeSet(int ReplyToAddress, int Data) {
   /*
     :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (Data == true || Data == false) {
-    EEPROM.update(1, Data);
+
+  if (Data == 0 || Data == 1) {
+    EEPROM.update(5, Data);
+  } else {
+    Serial.print("Error");
   }
   StreamingModeResponse(ReplyToAddress);
 }
@@ -752,6 +763,15 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Device Temp
 //----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+//End Of Device Temp
+//----------------------------------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------------------------------
+//Sensor Helpers
+//----------------------------------------------------------------------------------------------------
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
@@ -787,8 +807,13 @@ float ConvertPSItoKPa(float PSI) {
   float KPA = 6.8947572932 * PSI;
   return KPA;
 }
+
+String FloatToIntFixed(double Data, int NumberOfDecimals) {
+  double Multipler = pow(10, NumberOfDecimals);
+  return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
+}
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//End Of Device Temp
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------

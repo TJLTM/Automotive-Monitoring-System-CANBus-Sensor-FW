@@ -16,7 +16,7 @@
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
-int DeviceAddress = 1;
+int DeviceAddress = 100;
 //uint32_t id;
 //uint8_t type;  // bit0: ext, bit1: rtr
 //const uint8_t len;
@@ -296,12 +296,9 @@ bool WPacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number) {
-  switch (Number) {
-    case 1:
-      ErrorNumber = 1;
-      break;
-  }
+void SetError(int Number, int CommandNumber) {
+  ErrorNumber = Number;
+
 }
 
 void ResetError(int ReplyToAddress) {
@@ -471,7 +468,6 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  //byte DataPacket[8] = { 0x01, 0x00, highByte(140),lowByte(140), 0x04, 0x00, 0x00, 0x00 };
   CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
@@ -525,6 +521,12 @@ unsigned int GetPacingTimeFromMemory() {
   //  }
   return 250;
 }
+
+void UpdatePacingTime(int Data) {
+  EEPROM.update(2, highByte(Data));
+  EEPROM.update(3, lowByte(Data));
+}
+
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -605,8 +607,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  Serial.print("StreamingModeSet");
-  Serial.println(Data);
+
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
   } else {
@@ -767,7 +768,7 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//End Of Device Temp
 //----------------------------------------------------------------------------------------------------
 
 
@@ -775,7 +776,6 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 float ReadAnalog(int Samples, int PinNumber) {
-  
   long Sum = 0;
   float Value = 0;
   for (int x = 0; x < Samples; x++) {
@@ -816,22 +816,7 @@ String FloatToIntFixed(double Data, int NumberOfDecimals) {
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
-//Enf Of Sensor Helpers
-//----------------------------------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------------------------------
-//IO
-//----------------------------------------------------------------------------------------------------
-void IOSet(byte Idata, byte Odata) {
-
-}
-
-void IOGet() {
-
-}
-
-//----------------------------------------------------------------------------------------------------
-//Enf Of IO
+//End Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------

@@ -535,6 +535,12 @@ unsigned int GetPacingTimeFromMemory() {
   //  }
   return 250;
 }
+
+void UpdatePacingTime(int Data) {
+  EEPROM.update(2, highByte(Data));
+  EEPROM.update(3, lowByte(Data));
+}
+
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -615,8 +621,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  Serial.print("StreamingModeSet");
-  Serial.println(Data);
+
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
   } else {
@@ -816,7 +821,7 @@ float ConvertCtoF(float C) {
 }
 
 String FloatToIntFixed(double Data, int NumberOfDecimals) {
-  int Multipler = pow(10, NumberOfDecimals);
+  double Multipler = pow(10, NumberOfDecimals);
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
