@@ -26,7 +26,6 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 
 #define ComPort Serial
 #define SDCS 4
-bool PrintAll = false;
 File logfile;
 
 void setup() {
@@ -59,7 +58,7 @@ void CANBusSetup() {
     ComPort.println("CAN init fail, retrying. This is unlikely to recover");
     delay(1000);
   }
-  ComPort.println(F("CAN init ok!"));
+  ComPort.println("CAN init ok!");
 }
 
 void CANBusRecieveCheck() {
@@ -83,27 +82,27 @@ void CANBusRecieveCheck() {
        0x32: extended remote frame
   */
 
-  if (PrintAll == true) {
-    Serial.print("got some CAN Data:ID:");
-    Serial.print(CAN.getCanId());
 
-    Serial.print(" Data:");
-    for (uint8_t i = 0; i < 8; i++) {
-      Serial.print(i);
-      Serial.print(": ");
-      Serial.print(cdata[i], HEX);
-      Serial.print(",");
-    }
-    Serial.println();
-  }
+  // Serial.print("got some CAN Data:ID:");
+  // Serial.print(CAN.getCanId());
+
+  // Serial.print(" Data:");
+  // for (uint8_t i = 0; i < 8; i++) {
+  //   Serial.print(i);
+  //   Serial.print(": ");
+  //   Serial.print(cdata[i], HEX);
+  //   Serial.print(",");
+  // }
+  // Serial.println();
+
 
   int ID = CAN.getCanId();
   int CommandNumber = cdata[0];
   int OtherData = cdata[1];
-//  Serial.print("CommandNumber:");
-//  Serial.print(CommandNumber);
-//  Serial.print("  ::OtherData:");
-//  Serial.println(OtherData);
+  //  Serial.print("CommandNumber:");
+  //  Serial.print(CommandNumber);
+  //  Serial.print("  ::OtherData:");
+  //  Serial.println(OtherData);
   switch (CommandNumber) {
     case 1:  //State
       SensorParsing(ID, cdata[1], cdata[2] << 8 | cdata[3], cdata[4]);
@@ -116,7 +115,6 @@ void CANBusRecieveCheck() {
       OutputAndMaybeLogIt(Message);
       break;
   }
-
 }
 //----------------------------------------------------------------------------------------------------
 //End of CAN Bus Functions
@@ -126,19 +124,18 @@ void CANBusRecieveCheck() {
 //----------------------------------------------------------------------------------------------------
 void SensorParsing(int ID, int ChannelNumber, int Value, int DeviceType) {
   String Message = "SensorParsing," + String(ID);
-  double HRValue = double(Value);
   switch (DeviceType) {
     case 1:  //Current
-      Message += ",Current," + String(ChannelNumber) + "," + String(HRValue / 10.0);
+      Message += ",Current," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 2:  //Temp
-      Message += ",Temperature,"  + String(ChannelNumber) + "," + String(HRValue / 10.0);
+      Message += ",Temperature," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 3:  //Votlage
       Message += ",Votlage," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     case 4:  //Pressure
-      Message += ",Pressure," + String(ChannelNumber) + "," + String(HRValue / 100.0);
+      Message += ",Pressure," + String(ChannelNumber) + "," + String(double(Value) / 100.0);
       break;
     case 5:  //Vacuum
       Message += ",Vacuum," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
@@ -150,7 +147,7 @@ void SensorParsing(int ID, int ChannelNumber, int Value, int DeviceType) {
       Message += ",RPM," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
       break;
     default:
-      Message += "," + String(ChannelNumber) + "," + String(DeviceType) + "," +String(Value) + ",Not Supported";
+      Message += "," + String(ChannelNumber) + "," + String(DeviceType) + "," + String(Value) + ",Not Supported";
       break;
   }
 
@@ -168,7 +165,7 @@ void SetupSDCard() {
     String filename = "AMS0000.LOG";
     for (uint8_t i = 0; i < 10000; i++) {
       // create if does not exist, do not open existing, write, sync after write
-      if (! SD.exists(filename)) {
+      if (!SD.exists(filename)) {
         break;
       } else {
         String WhatToPutIn = "";
@@ -184,9 +181,8 @@ void SetupSDCard() {
         if (i >= 1000 && i < 10000) {
           WhatToPutIn = String(i);
         }
-        filename = "AMS" + WhatToPutIn + ".LOG"; //update the file name
+        filename = "AMS" + WhatToPutIn + ".LOG";  //update the file name
       }
-
     }
     logfile = SD.open(filename, FILE_WRITE);
     ComPort.println("Log File," + filename + ",Created");
@@ -195,10 +191,19 @@ void SetupSDCard() {
   }
 }
 
-void OutputAndMaybeLogIt(String Data) {
-  if (logfile) {
-    logfile.println(Data);
+void FileSizeCheck(){
+
+  if(logfile.size() > 5242880 ){ // 5MB in bytes
+    logfile.close();
+    SetupSDCard();
   }
+}
+
+void OutputAndMaybeLogIt(String Data) {
+  logfile.println(Data);
+  logfile.flush();
+  FileSizeCheck();
+
   ComPort.println(Data);
 }
 //----------------------------------------------------------------------------------------------------
