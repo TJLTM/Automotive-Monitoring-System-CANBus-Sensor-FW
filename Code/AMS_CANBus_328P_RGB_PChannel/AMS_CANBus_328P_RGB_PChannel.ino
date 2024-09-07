@@ -16,7 +16,7 @@
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
-int DeviceAddress = 1;
+int DeviceAddress = 300;
 //uint32_t id;
 //uint8_t type;  // bit0: ext, bit1: rtr
 //const uint8_t len;
@@ -27,11 +27,16 @@ long PacingTimer;
 #define DeviceType 0
 #define MaxChannelNumber 3
 
+#define InputPin 4
 // Red, Green, Blue, Channel 4
-const int OutputPin[] = {3, 5, 6, 10};
-int CurrentColor[] = {0, 0, 0, 0};
-int StartColor[] = {0, 0, 0};
-int EndColor[] = {0, 0, 0};
+const int OutputPin[] = { 3, 5, 6, 10 };
+int CurrentColor[] = { 0, 0, 0, 0 };
+int StartColor[] = { 0, 0, 0 };
+int EndColor[] = { 0, 0, 0 };
+int StepsPerColor[] = { 0, 0, 0 };
+
+int FadeTime = 1000;
+bool RunFadeBetween = false;
 
 
 uint8_t ErrorNumber = 0;
@@ -91,13 +96,17 @@ void loop() {
   if (GetStreamingFromMemory() == 1) {
     if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
       for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
+        // this should read the input state on a timer 
         StatusResponse(i);
       }
       PacingTimer = CurrentTime;
     }
   }
 
-  ReadInputState();
+  if (RunFadeBetween == true){
+
+  }
+
   serialEvent();
 }
 
@@ -242,8 +251,9 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-
-      PacingSet(-1, ThingToTest.toInt());
+      if (PacingValueCheck(ThingToTest.toInt()) == true) {
+        PacingSet(-1, ThingToTest.toInt());
+      }
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -295,7 +305,7 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool WPacingValueCheck(int Value) {
+bool PacingValueCheck(int Value) {
   Serial.println("PacingValueCheck");
   Serial.println(Value);
   if (Value >= 250 && Value <= 65535) {
@@ -307,12 +317,8 @@ bool WPacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number) {
-  switch (Number) {
-    case 1:
-      ErrorNumber = 1;
-      break;
-  }
+void SetError(int Number, int CommandNumber) {
+  ErrorNumber = Number;
 }
 
 void ResetError(int ReplyToAddress) {
@@ -380,7 +386,7 @@ void CANBusRecieveCheck() {
 
   if ((CAN.getCanId() > 9 && CAN.getCanId() < 20) && (cdata[0] == 0x00 && cdata[1] == 0x3F && cdata[2] == 0x00 && cdata[3] == 0xFF && cdata[4] == 0x00 && cdata[5] == 0xFF && cdata[6] == 0x00 && cdata[7] == 0xFF)) {
     DiscoveryResponse();
-  } //else {
+  }  //else {
   //    //Check if this is the target device
   //    if (CAN.getCanId() == DeviceAddress){
   //      int CommandNumber = cdata[0];
@@ -482,7 +488,7 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength + 1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -535,6 +541,12 @@ unsigned int GetPacingTimeFromMemory() {
   //  }
   return 250;
 }
+
+void UpdatePacingTime(int Data) {
+  EEPROM.update(2, highByte(Data));
+  EEPROM.update(3, lowByte(Data));
+}
+
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -582,7 +594,7 @@ void StatusResponse(int ChannelNumber) {
   */
   if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
-    int ReturnedValue = 0; //SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
+    int ReturnedValue = 0;  //SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
 
     //CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
     //SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
@@ -615,8 +627,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  Serial.print("StreamingModeSet");
-  Serial.println(Data);
+
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
   } else {
@@ -646,9 +657,9 @@ void PacingSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  if (Data >= 250 && Data <= 65535) {
-    EEPROM.update(3, highByte(Data));
-    EEPROM.update(2, lowByte(Data));
+  if (PacingValueCheck(Data) == true) {
+    EEPROM.update(2, highByte(Data));
+    EEPROM.update(3, lowByte(Data));
   }
   PacingResponse(ReplyToAddress);
 }
@@ -777,7 +788,7 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//End Of Device Temp
 //----------------------------------------------------------------------------------------------------
 
 
@@ -826,34 +837,49 @@ String FloatToIntFixed(double Data, int NumberOfDecimals) {
 //----------------------------------------------------------------------------------------------------
 //Color
 //----------------------------------------------------------------------------------------------------
-void SetColor(int Red, int Green, int Blue) {
-  CurrentColor[0] = Red;
-  CurrentColor[1] = Green;
-  CurrentColor[2] = Blue;
+void __ColorSet(int Red, int Green, int Blue) {
   analogWrite(OutputPin[0], Red);
   analogWrite(OutputPin[1], Green);
   analogWrite(OutputPin[2], Blue);
 }
 
+void SetColor(int Red, int Green, int Blue) {
+  CurrentColor[0] = Red;
+  CurrentColor[1] = Green;
+  CurrentColor[2] = Blue;
+  __ColorSet(Red, Green, Blue);
+}
+
 void GetCurrentColor() {
-
-
+  CanBusSend(DeviceAddress, 4, 0x0E, byte("R"), CurrentColor[0], CurrentColor[1], CurrentColor[2], 0x00, 0x00, 0x00);
 }
 
-void FadeBetween(int StartColor, int EndColor) {
-
+void FadeBetween(int StartRed, int StartGreen, int StartBlue, int EndRed, int EndGreen, int EndBlue) {
+  RunFadeBetween = true;
+  StartColor[0] = StartRed;
+  StartColor[1] = StartGreen;
+  StartColor[2] = StartBlue;
+  EndColor[0] = EndRed;
+  EndColor[1] = EndGreen;
+  EndColor[2] = EndBlue;
+  __ColorSet(StartRed, StartGreen, StartBlue);
+  //figure out the steps between R, G & B per time interval
+  StepsPerColor[0] = (EndRed - StartRed)/FadeTime;
+  StepsPerColor[1] = (EndGreen - StartGreen)/FadeTime;
+  StepsPerColor[2] = (EndBlue - StartBlue)/FadeTime;
+  
 }
 
-void FadeTo(int EndColor) {
-
+void FadeTo(int Red, int Green, int Blue) {
 }
 
 void SetFadeTime(int mS) {
+  FadeTime = mS;
 
 }
 
 void GetFadeTime() {
-
+  
 }
 
 void SetPWM(int ChannelNumber, int PWM) {
@@ -862,10 +888,10 @@ void SetPWM(int ChannelNumber, int PWM) {
 }
 
 void GetPWM(int ChannelNumber) {
-
+  CanBusSend(DeviceAddress, 4, 0x0E, byte("R"), CurrentColor[0], CurrentColor[1], CurrentColor[2], 0x00, 0x00, 0x00);
 }
 
-void ReadInputState() {
+void GetInputState(){
 
 }
 //----------------------------------------------------------------------------------------------------

@@ -283,7 +283,10 @@ void CommandToCall(int Index) {
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
 bool PacingValueCheck(int Value) {
-  if (Value <= 250 || Value <= 65535) {
+  Serial.println("PacingValueCheck");
+  Serial.println(Value);
+  if (Value >= 250 && Value <= 65535) {
+    Serial.println("asdf");
     return true;
   } else {
     SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
