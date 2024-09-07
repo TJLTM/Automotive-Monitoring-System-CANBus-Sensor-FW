@@ -44,6 +44,7 @@ const char *const AcceptedCommands[] = {
   "RESETERROR",
   "REBOOT",
   "PACING?",
+  "ADDRESS?"
 };
 
 const char *ParameterCommands[] = {
@@ -519,7 +520,7 @@ unsigned int GetPacingTimeFromMemory() {
   //     EEPROM.update(3, highByte(250));
   //     EEPROM.update(2, lowByte(250));
   //  }
-  return 250;
+  return 2500;
 }
 
 void UpdatePacingTime(int Data) {
@@ -838,15 +839,23 @@ int SensorCode(int ChannelNumber) {
 }
 
 int CurrentSensor(int ChannelNumber) {
+  /*
+  The sensor i'm using is Electronics-Salon Panel Mount AC/DC Current Sensor Module Board, Based on ACS758 (+/-150Amp) 
+  with the documents this thing has i'm wiring it per it's spec and polarity. I'm using the 5v based input that will 
+  Center the 0 amp output around Vcc/2 ~2.5v and depending on polarity will be either above or below 2.5 volts. 
+  If you're finding that your system is constantly "discharging" when you know the system is worrking correctly then
+  your options are to either flip the cases below or to flip the wiring on your sensor. 
+  */
+
   int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
-  int Center = 511; //measure this from the device.
+  int Center = 509; //measure this from the device. should be around 511
   double AmpPermV = 0.013275; //get this from DataSheet for sensor or do a bit of calibration yourself
   int DNAdjusted = 0;
   if (DN > Center) {
-    DNAdjusted = DN - Center; //positive case
+    DNAdjusted = (DN - Center) * (-1); //Negative Case
   }
   if (DN < Center) {
-    DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
+    DNAdjusted = map(DN, Center, 0, 0, Center); //Positive Case
   }
   double Amps = (DNAdjusted * 0.00488758) / AmpPermV;
   return FloatToIntFixed(Amps, 1).toInt();

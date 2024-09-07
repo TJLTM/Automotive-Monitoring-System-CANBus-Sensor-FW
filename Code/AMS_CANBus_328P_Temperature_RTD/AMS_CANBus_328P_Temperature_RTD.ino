@@ -533,7 +533,7 @@ unsigned int GetPacingTimeFromMemory() {
   //     EEPROM.update(3, highByte(250));
   //     EEPROM.update(2, lowByte(250));
   //  }
-  return 250;
+  return 3000;
 }
 
 void UpdatePacingTime(int Data) {
@@ -836,7 +836,7 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
-  int Value = 0;
+  
   float Temp = RTDPointers[ChannelNumber]->temperature(RNOMINAL, RREF);
   uint8_t fault = RTDPointers[ChannelNumber]->readFault();
 
@@ -866,10 +866,10 @@ int SensorCode(int ChannelNumber) {
   }
 
   if (UNITS == 'I') {
-    Value = ConvertCtoF(Value);
+    Temp = ConvertCtoF(Temp);
   }
-  Serial.println("Value:"+String(Value));
-  return FloatToIntFixed(Value, 1).toInt();
+
+  return FloatToIntFixed(Temp, 1).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
