@@ -1,5 +1,6 @@
 #include <EEPROM.h>
 #include <SPI.h>
+#include <Adafruit_MAX31865.h>
 
 //CAN_2515 or CAN_2518FD
 // #include "mcp2518fd_can.h"
@@ -16,7 +17,7 @@
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
-int DeviceAddress = 1;
+int DeviceAddress = 200;
 //uint32_t id;
 //uint8_t type;  // bit0: ext, bit1: rtr
 //const uint8_t len;
@@ -24,8 +25,16 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 
 //Device Configuration setting
 long PacingTimer;
-#define DeviceType 0
-#define MaxChannelNumber 1
+#define DeviceType 2
+#define MaxChannelNumber 2
+int SensorMin[] = { -40, -40, -40};
+int SensorMax[] = {650, 650, 650};
+Adafruit_MAX31865 Channel0 = Adafruit_MAX31865(3);
+Adafruit_MAX31865 Channel1 = Adafruit_MAX31865(4);
+Adafruit_MAX31865 Channel2 = Adafruit_MAX31865(5);
+Adafruit_MAX31865 *RTDPointers [3] = {&Channel0, &Channel1, &Channel2};
+#define RREF      430.0
+#define RNOMINAL  100.0
 
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
@@ -69,6 +78,14 @@ void setup() {
   ComPort.println(GetPacingTimeFromMemory());
 
   DiscoveryResponse();
+  /*
+      Please Reference Adafruit_MAX31865
+      docs for setup of these boards if
+      you are going to use 4 or 2 wire
+  */
+  Channel0.begin(MAX31865_3WIRE);
+  Channel1.begin(MAX31865_3WIRE);
+  Channel2.begin(MAX31865_3WIRE);
 }
 
 void loop() {
@@ -228,9 +245,8 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-      if (PacingValueCheck(ThingToTest.toInt()) == true) {
-        PacingSet(-1, ThingToTest.toInt());
-      }
+
+      PacingSet(-1, ThingToTest.toInt());
       break;
     case 3:
       //SETDEVICEADDRESS
@@ -282,7 +298,7 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool PacingValueCheck(int Value) {
+bool WPacingValueCheck(int Value) {
   Serial.println("PacingValueCheck");
   Serial.println(Value);
   if (Value >= 250 && Value <= 65535) {
@@ -517,7 +533,7 @@ unsigned int GetPacingTimeFromMemory() {
   //     EEPROM.update(3, highByte(250));
   //     EEPROM.update(2, lowByte(250));
   //  }
-  return 250;
+  return 3000;
 }
 
 void UpdatePacingTime(int Data) {
@@ -572,13 +588,11 @@ void StatusResponse(int ChannelNumber) {
   */
   if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
-  int ReturnedValue = SensorCode(ChannelNumber);
+    int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
 
-
-  CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue),byte(DeviceType), 0x00, 0x00, 0x00);
-
-  //SendSerial("StatusResponse:0x01:" + String(ReturnedValue) + ":" + String(DeviceType));
-}else {
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType), 0x00, 0x00, 0x00);
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(DeviceType));
+  } else {
     // return error that channel doesn't exist
     ErrorNumber = 3;
     SendSerial("Error:0x01" + ErrorNumber);
@@ -637,9 +651,9 @@ void PacingSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  if (PacingValueCheck(Data) == true) {
-    EEPROM.update(2, highByte(Data));
-    EEPROM.update(3, lowByte(Data));
+  if (Data >= 250 && Data <= 65535) {
+    EEPROM.update(3, highByte(Data));
+    EEPROM.update(2, lowByte(Data));
   }
   PacingResponse(ReplyToAddress);
 }
@@ -806,32 +820,12 @@ float ConvertCtoF(float C) {
   return F;
 }
 
-float ConvertPSItoKPa(float PSI) {
-  float KPA = 6.8947572932 * PSI;
-  return KPA;
-}
-
 String FloatToIntFixed(double Data, int NumberOfDecimals) {
   double Multipler = pow(10, NumberOfDecimals);
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
-//End Of Device Temp
-//----------------------------------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------------------------------
-//IO
-//----------------------------------------------------------------------------------------------------
-void IOSet(int ReplyToAddress, byte Idata, byte Odata) {
-
-}
-
-void IOGet() {
-
-}
-
-//----------------------------------------------------------------------------------------------------
-//Enf Of IO
+//End Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
@@ -842,11 +836,40 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
+  
+  float Temp = RTDPointers[ChannelNumber]->temperature(RNOMINAL, RREF);
+  uint8_t fault = RTDPointers[ChannelNumber]->readFault();
 
-  int Value = ChannelNumber;
+  if (fault) {
+    SetError(4, 1);
+    Temp = 0.0;
+    Serial.print("Fault 0x"); Serial.println(fault, HEX);
+    if (fault & MAX31865_FAULT_HIGHTHRESH) {
+      Serial.println("RTD High Threshold");
+    }
+    if (fault & MAX31865_FAULT_LOWTHRESH) {
+      Serial.println("RTD Low Threshold");
+    }
+    if (fault & MAX31865_FAULT_REFINLOW) {
+      Serial.println("REFIN- > 0.85 x Bias");
+    }
+    if (fault & MAX31865_FAULT_REFINHIGH) {
+      Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865_FAULT_RTDINLOW) {
+      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865_FAULT_OVUV) {
+      Serial.println("Under/Over voltage");
+    }
+    RTDPointers[ChannelNumber]->clearFault();
+  }
 
+  if (UNITS == 'I') {
+    Temp = ConvertCtoF(Temp);
+  }
 
-  return Value;
+  return FloatToIntFixed(Temp, 1).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
