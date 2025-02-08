@@ -26,10 +26,10 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 long PacingTimer;
 #define DeviceType 0
 #define MaxChannelNumber 3
-int SensorPins[] = {A1, A2, A3, A4};
-int SensorType[] = {4, 4, 4, 1};
-int SensorMin[] = {0,0,0,-150};
-int SensorMax[] = {150,150,150,150};
+int SensorPins[] = { A1, A2, A3, A4 };
+int SensorType[] = { 4, 4, 4, 1 };
+int SensorMin[] = { 0, 0, 0, -150 };
+int SensorMax[] = { 150, 150, 150, 150 };
 uint8_t ErrorNumber = 0;
 char UNITS = 'I';
 
@@ -299,7 +299,6 @@ bool WPacingValueCheck(int Value) {
 
 void SetError(int Number, int CommandNumber) {
   ErrorNumber = Number;
-
 }
 
 void ResetError(int ReplyToAddress) {
@@ -367,109 +366,104 @@ void CANBusRecieveCheck() {
 
   if ((CAN.getCanId() > 9 && CAN.getCanId() < 20) && (cdata[0] == 0x00 && cdata[1] == 0x3F && cdata[2] == 0x00 && cdata[3] == 0xFF && cdata[4] == 0x00 && cdata[5] == 0xFF && cdata[6] == 0x00 && cdata[7] == 0xFF)) {
     DiscoveryResponse();
-  } //else {
-  //    //Check if this is the target device
-  //    if (CAN.getCanId() == DeviceAddress){
-  //      int CommandNumber = cdata[0];
-  //      int OtherData = cdata[1];
-  //      Serial.print("CommandNumber:");
-  //      Serial.print(CommandNumber);
-  //      Serial.print("  ::OtherData:");
-  //      Serial.println(OtherData);
-  //      switch (CommandNumber) {
-  //        case 1:  //State
-  //          StatusResponse(OtherData);
-  //          break;
-  //        case 3:  //Streaming
-  //          if (OtherData == '?') {
-  //            StreamingModeResponse();
-  //          }
-  //          if (OtherData == 'S') {
-  //            if (cdata[4] == 0x00) {
-  //              StreamingModeSet(ReplyAddress, false);
-  //            }
-  //            if (cdata[4] == 0xFF) {
-  //              StreamingModeSet(ReplyAddress, true);
-  //            }
-  //          }
-  //          break;
-  //        case 4:  //Pacing
-  //          if (WhatKindOfCommand == '?') {
-  //            PacingResponse(ReplyAddress);
-  //          }
-  //          if (WhatKindOfCommand == 'S') {
-  //            int Data = cdata[4] << 8 + cdata[5];
-  //            PacingSet(ReplyAddress, Data);
-  //          }
-  //          break;
-  //        case 5:  //Unit System
-  //          if (WhatKindOfCommand == '?') {
-  //            UnitsSystemResponse(ReplyAddress);
-  //          }
-  //          if (WhatKindOfCommand == 'S') {
-  //            UnitsSystemSet(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        case 6:  //I/O
-  //          if (WhatKindOfCommand == 'S') {
-  //            IOSet(ReplyAddress, cdata[4], cdata[5]);
-  //          }
-  //          break;
-  //        case 7:  //Error?
-  //          if (WhatKindOfCommand == '?') {
-  //            GetError(ReplyAddress);
-  //          }
-  //          break;
-  //        case 8:  //Unit ABR
-  //          if (WhatKindOfCommand == '?') {
-  //            UnitsABRResponse(ReplyAddress);
-  //          }
-  //          break;
-  //        case 9:  //Error Reset
-  //          if (WhatKindOfCommand == 'S') {
-  //            ResetError(ReplyAddress);
-  //          }
-  //          break;
-  //        case 10:  //Reboot
-  //          if (WhatKindOfCommand == 'S') {
-  //            RebootDevice(ReplyAddress);
-  //          }
-  //          break;
-  //        case 11:  //Device Temp
-  //          if (WhatKindOfCommand == '?') {
-  //            DeviceTemp(ReplyAddress);
-  //          }
-  //          break;
-  //        case 12:  //Max Sensor Channel
-  //          if (WhatKindOfCommand == '?') {
-  //            MaxSensorChannel(ReplyAddress);
-  //          }
-  //          break;
-  //        case 13:  //Sensor Channel Range Max
-  //          if (WhatKindOfCommand == '?') {
-  //            MaxSensorChannelRange(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        case 14:  //Sensor Channel Range Min
-  //          if (WhatKindOfCommand == '?') {
-  //            MinSensorChannelRange(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        default:
-  //          ErrorNumber = 0x01;
-  //          GetError(ReplyAddress);
-  //          ErrorNumber = 0x00;
-  //          break;
-  //      }
-  //    }
-  //  }
+  } else {
+    //Check if this is the target device
+    if (CAN.getCanId() == DeviceAddress) {
+      switch (cdata[0]) {
+        case 1:  //State
+          if (cdata[1] == '?') {
+            StatusResponse(cdata[2]);
+          }
+          break;
+        case 2:  //Streaming
+          switch (cdata[1]) {
+            case '?':
+              // do your query
+              break;
+            case 'S':
+              // do your set
+              break;
+          }
+          break;
+        case 3:  //Pacing
+          switch (cdata[1]) {
+            case '?':
+              // do your query
+              break;
+            case 'S':
+              // do your set
+              break;
+          }
+          break;
+
+        case 4:  //Units
+          switch (cdata[1]) {
+            case '?':
+              // do your query
+              break;
+            case 'S':
+              // do your set
+              break;
+          }
+
+        case 6:  //Error Query
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 7:  //Unit ABR Query
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 8:  //Error Reset
+          if (cdata[1] == 'S') {
+          }
+          break;
+
+        case 9:  //Reboot Device
+          //need to do a complete packet check
+          break;
+
+        case 10:  //Device Temp
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 11:  //Max Sensor channels
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 12:  //Sensor channel Range Max
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 13:  //Sensor channel Range Min
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        case 17:  //Sensor channel Type
+          if (cdata[1] == '?') {
+          }
+          break;
+
+        default:
+          GetError(1);
+          ErrorNumber = 0x00;
+          break;
+      }
+    }
+  }
 }
 
 void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength + 1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -575,8 +569,8 @@ void StatusResponse(int ChannelNumber) {
   */
   if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
-    int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
-    
+    int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
+
     CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
@@ -848,22 +842,22 @@ int CurrentSensor(int ChannelNumber) {
   */
 
   int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
-  int Center = 509; //measure this from the device. should be around 511
-  double AmpPermV = 0.013275; //get this from DataSheet for sensor or do a bit of calibration yourself
+  int Center = 509;            //measure this from the device. should be around 511
+  double AmpPermV = 0.013275;  //get this from DataSheet for sensor or do a bit of calibration yourself
   int DNAdjusted = 0;
   if (DN > Center) {
-    DNAdjusted = (DN - Center) * (-1); //Negative Case
+    DNAdjusted = (DN - Center) * (-1);  //Negative Case
   }
   if (DN < Center) {
-    DNAdjusted = map(DN, Center, 0, 0, Center); //Positive Case
+    DNAdjusted = map(DN, Center, 0, 0, Center);  //Positive Case
   }
   double Amps = (DNAdjusted * 0.00488758) / AmpPermV;
   return FloatToIntFixed(Amps, 1).toInt();
 }
 
 int PressureSensor(int ChannelNumber) {
-  float Pressure = 25.00 * 0.0048875 * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5; //PSI reading cause i work in freedom units
-  if (Pressure <= 0) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear anything less than 0.5volts zero PSI
+  float Pressure = 25.00 * 0.0048875 * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;  //PSI reading cause i work in freedom units
+  if (Pressure <= 0) {                                                                    // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear anything less than 0.5volts zero PSI
     Pressure = 0;
   }
   if (UNITS == 'M') {
