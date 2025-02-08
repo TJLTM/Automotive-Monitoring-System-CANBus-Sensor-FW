@@ -727,13 +727,12 @@ void UnitsABRResponse(bool FromSerial, int ChannelNumber) {
 
 void DeviceTemp(bool FromSerial) {
   float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
-  int Value = ConvertCtoF(NTCReadInC(10000, Resistance)) * 100;
+  int Value = 0;
   if (GetUnitSystemFromMemory() == 'I') {
-    int Value = FloatToIntFixed(ConvertCtoF(NTCReadInC(10000, Resistance)), 2).toInt();
+    Value = FloatToIntFixed(ConvertCtoF(NTCReadInC(10000, Resistance)), 2).toInt();
   } else {
-    int Value = FloatToIntFixed(NTCReadInC(10000, Resistance), 2).toInt();
+    Value = FloatToIntFixed(NTCReadInC(10000, Resistance), 2).toInt();
   }
-
 
   if (FromSerial == false) {
     CanBusSend(DeviceAddress, 5, 0x0A, byte("R"), highByte(Value), lowByte(Value), 0x00, 0x00, 0x00, 0x00);
