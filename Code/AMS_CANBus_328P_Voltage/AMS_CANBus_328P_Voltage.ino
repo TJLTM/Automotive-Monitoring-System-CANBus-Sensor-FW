@@ -86,6 +86,10 @@ void loop() {
     }
   }
 
+  if (ErrorNumber <=1 && ErrorNumber <= 4){
+    ResetError(true);
+  }
+
   serialEvent();
 }
 
@@ -261,7 +265,7 @@ void CommandToCall(int Index) {
     case 3:
       //RESETERROR
       SendSerial("Error Reset:0x08");
-      ResetError(-1);
+      ResetError(true);
       break;
     case 4:
       //REBOOT
@@ -307,7 +311,9 @@ void SetError(int Number, int CommandNumber) {
 
 void ResetError(bool FromSerial) {
   ErrorNumber = 0;
-  GetError(FromSerial);
+  ErrorCommandNumber = 0;
+  GetError(false);
+  GetError(true);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of System related functions
@@ -587,7 +593,7 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
-  if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
+  if (ChannelRangeCheck(ChannelNumber) == true) {
 
     int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
 
@@ -595,9 +601,7 @@ void StatusResponse(int ChannelNumber) {
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
-    ErrorNumber = 3;
-    SendSerial("Error:0x01" + ErrorNumber);
-    ErrorNumber = 0;
+    SetError(3, 0x1);
   }
 }
 
@@ -623,10 +627,10 @@ void StreamingModeSet(bool FromSerial, int Data) {
 
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
+    StreamingModeResponse(FromSerial);
   } else {
-    Serial.print("Error");
+    SetError(3, 0x02);
   }
-  StreamingModeResponse(FromSerial);
 }
 
 void PacingResponse(bool FromSerial) {
@@ -653,8 +657,10 @@ void PacingSet(bool FromSerial, int Data) {
   if (Data >= 250 && Data <= 65535) {
     EEPROM.update(3, highByte(Data));
     EEPROM.update(2, lowByte(Data));
+    PacingResponse(FromSerial);
+  } else {
+    SetError(3, 0x03);
   }
-  PacingResponse(FromSerial);
 }
 
 void UnitsSystemResponse(bool FromSerial) {
@@ -680,56 +686,62 @@ void UnitsSystemSet(bool FromSerial, char Data) {
 
   if (Data == 'I' || Data == 'M') {
     EEPROM.update(4, Data);
+    UnitsSystemResponse(FromSerial);
+  } else {
+    SetError(3, 0x04);
   }
-  UnitsSystemResponse(FromSerial);
 }
 
-void UnitsABRResponse(bool FromSerial, int ChannelNumber) {
+void UnitsABRResponse(bool FromSerial, int Channel) {
   /*
     :return: None
     :rtype: None
   */
-  byte ABR = 0x00;
-  switch (SensorType[ChannelNumber]) {
-    case 1:  // Current
-      ABR = 0x01;
-      break;
-    case 2:  // Temp
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x03;
-      } else {
-        ABR = 0x02;
-      }
-      break;
-    case 3:  // Voltage
-      ABR = 0x04;
-      break;
-    case 4:  // Pressure
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x06;
-      } else {
-        ABR = 0x05;
-      }
-      break;
-    case 5:  // Vacuum
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x08;
-      } else {
-        ABR = 0x07;
-      }
-      break;
-    case 6:  // I/O
-      ABR = 0x09;
-      break;
-    case 7:  // RPM
-      ABR = 0x0A;
-      break;
-  }
+  if (ChannelRangeCheck(Channel) == true) {
+    byte ABR = 0x00;
+    switch (SensorType[Channel]) {
+      case 1:  // Current
+        ABR = 0x01;
+        break;
+      case 2:  // Temp
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x03;
+        } else {
+          ABR = 0x02;
+        }
+        break;
+      case 3:  // Voltage
+        ABR = 0x04;
+        break;
+      case 4:  // Pressure
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x06;
+        } else {
+          ABR = 0x05;
+        }
+        break;
+      case 5:  // Vacuum
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x08;
+        } else {
+          ABR = 0x07;
+        }
+        break;
+      case 6:  // I/O
+        ABR = 0x09;
+        break;
+      case 7:  // RPM
+        ABR = 0x0A;
+        break;
+    }
 
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 3, 0x07, byte("R"), ChannelNumber, ABR, 0x00, 0x00, 0x00, 0x00);
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 3, 0x07, byte("R"), Channel, ABR, 0x00, 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("UnitABR:0x07:" + String(Channel) + ":" + String(ABR));
+    }
   } else {
-    SendSerial("UnitABR:0x07:" + String(ChannelNumber) + ":" + String(ABR));
+    SetError(3, 0x07);
   }
 }
 
@@ -742,28 +754,41 @@ void MaxSensorChannel(bool FromSerial) {
 }
 
 void MaxSensorChannelRange(bool FromSerial, int Channel) {
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 4, 0x0C, byte("R"), byte(Channel), highByte(SensorMax[Channel]), lowByte(SensorMax[Channel]), 0x00, 0x00, 0x00);
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x0C, byte("R"), byte(Channel), highByte(SensorMax[Channel]), lowByte(SensorMax[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Max Sensor Channel Range:0x0C:" + String(Channel) + ":" + String(SensorMax[Channel]));
+    }
   } else {
-    SendSerial("Max Sensor Channel Range:0x0C:" + String(Channel) + ":" + String(SensorMax[Channel]));
+    SetError(3, 0x0C);
   }
 }
 
 void MinSensorChannelRange(bool FromSerial, int Channel) {
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 4, 0x0D, byte("R"), byte(Channel), highByte(SensorMin[Channel]), lowByte(SensorMin[Channel]), 0x00, 0x00, 0x00);
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x0D, byte("R"), byte(Channel), highByte(SensorMin[Channel]), lowByte(SensorMin[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Min Sensor Channel Range:0x0D:" + String(Channel) + ":" + String(SensorMin[Channel]));
+    }
   } else {
-    SendSerial("Min Sensor Channel Range:0x0D:" + String(Channel) + ":" + String(SensorMin[Channel]));
+    SetError(3, 0x0D);
   }
 }
 
 void SensorChannelType(bool FromSerial, int Channel) {
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 4, 0x11, byte("R"), byte(Channel), highByte(SensorType[Channel]), lowByte(SensorType[Channel]), 0x00, 0x00, 0x00);
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x11, byte("R"), byte(Channel), highByte(SensorType[Channel]), lowByte(SensorType[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Min Sensor Channel Range:0x11:" + String(Channel) + ":" + String(SensorType[Channel]));
+    }
   } else {
-    SendSerial("Min Sensor Channel Range:0x11:" + String(Channel) + ":" + String(SensorType[Channel]));
+    SetError(3, 0x11);
   }
 }
+
 //----------------------------------------------------------------------------------------------------
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
@@ -794,6 +819,14 @@ void DeviceTemp(bool FromSerial) {
 //----------------------------------------------------------------------------------------------------
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
+bool ChannelRangeCheck(int Channel) {
+  if (Channel <= 0 && Channel <= MaxChannelNumber) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
