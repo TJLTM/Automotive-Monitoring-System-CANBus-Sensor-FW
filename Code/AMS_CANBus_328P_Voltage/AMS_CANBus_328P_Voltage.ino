@@ -45,8 +45,7 @@ const char *const AcceptedCommands[] PROGMEM = {
   "REBOOT",
   "PACING?",
   "ADDR?",
-  "TEMP?",
-  "CHMAX?"
+  "TEMP?"
 };
 
 const char *const ParameterCommands[] PROGMEM = {
@@ -54,8 +53,7 @@ const char *const ParameterCommands[] PROGMEM = {
   "SETSTREAMING",
   "SETPACINGTIME",
   "SETDEVICEADDR",
-  "GETUABR",
-  "GETCHRANGE",
+  "GETUABR"
 };
 
 void setup() {
@@ -273,6 +271,10 @@ void CommandToCall(int Index) {
       //PACING?
       PacingResponse(true);
       break;
+    case 6:
+      //TEMP?
+      DeviceTemp(true);
+      break;
   }
 }
 //----------------------------------------------------------------------------------------------------
@@ -354,17 +356,17 @@ void CANBusRecieveCheck() {
 
   //Check if Discovery do not filter by ID
 
-  Serial.print("got some CAN Data:ID:");
-  Serial.print(CAN.getCanId());
+  // Serial.print("got some CAN Data:ID:");
+  // Serial.print(CAN.getCanId());
 
-  Serial.print(" Data:");
-  for (uint8_t i = 0; i < 8; i++) {
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.print(cdata[i], HEX);
-    Serial.print(",");
-  }
-  Serial.println();
+  // Serial.print(" Data:");
+  // for (uint8_t i = 0; i < 8; i++) {
+  //   Serial.print(i);
+  //   Serial.print(": ");
+  //   Serial.print(cdata[i], HEX);
+  //   Serial.print(",");
+  // }
+  // Serial.println();
 
   if ((CAN.getCanId() > 9 && CAN.getCanId() < 20) && (cdata[0] == 0x00 && cdata[1] == 0x3F && cdata[2] == 0x00 && cdata[3] == 0xFF && cdata[4] == 0x00 && cdata[5] == 0xFF && cdata[6] == 0x00 && cdata[7] == 0xFF)) {
     DiscoveryResponse();
@@ -377,6 +379,7 @@ void CANBusRecieveCheck() {
             StatusResponse(cdata[2]);
           }
           break;
+
         case 2:  //Streaming
           switch (cdata[1]) {
             case '?':
@@ -389,6 +392,7 @@ void CANBusRecieveCheck() {
               break;
           }
           break;
+
         case 3:  //Pacing
           switch (cdata[1]) {
             case '?':
@@ -403,25 +407,29 @@ void CANBusRecieveCheck() {
         case 4:  //Units
           switch (cdata[1]) {
             case '?':
-              // do your query
+              UnitsSystemResponse(false);
               break;
             case 'S':
-              // do your set
+              UnitsSystemSet(false, cdata[2]);
               break;
           }
+          break;
 
         case 6:  //Error Query
           if (cdata[1] == '?') {
+            GetError(false);
           }
           break;
 
         case 7:  //Unit ABR Query
           if (cdata[1] == '?') {
+            UnitsABRResponse(false, cdata[2]);
           }
           break;
 
         case 8:  //Error Reset
           if (cdata[1] == 'S') {
+            ResetError(false);
           }
           break;
 
@@ -430,37 +438,41 @@ void CANBusRecieveCheck() {
           if (cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0x0A) {
             RebootDevice();
           }
-
           break;
 
         case 10:  //Device Temp
           if (cdata[1] == '?') {
+            DeviceTemp(false);
           }
           break;
 
         case 11:  //Max Sensor channels
           if (cdata[1] == '?') {
+            MaxSensorChannel(false);
           }
           break;
 
         case 12:  //Sensor channel Range Max
           if (cdata[1] == '?') {
+            MaxSensorChannelRange(false, cdata[2]);
           }
           break;
 
         case 13:  //Sensor channel Range Min
           if (cdata[1] == '?') {
+            MinSensorChannelRange(false, cdata[2]);
           }
           break;
 
         case 17:  //Sensor channel Type
           if (cdata[1] == '?') {
+            SensorChannelType(false, cdata[2]);
           }
           break;
 
         default:
           GetError(1);
-          ErrorNumber = 0x00;
+          ResetError(false);
           break;
       }
     }
@@ -605,8 +617,6 @@ void StreamingModeResponse(bool FromSerial) {
 
 void StreamingModeSet(bool FromSerial, int Data) {
   /*
-    , defaults to -1
-    :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
@@ -649,8 +659,6 @@ void PacingSet(bool FromSerial, int Data) {
 
 void UnitsSystemResponse(bool FromSerial) {
   /*
-    
-    :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
@@ -725,22 +733,6 @@ void UnitsABRResponse(bool FromSerial, int ChannelNumber) {
   }
 }
 
-void DeviceTemp(bool FromSerial) {
-  float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
-  int Value = 0;
-  if (GetUnitSystemFromMemory() == 'I') {
-    Value = FloatToIntFixed(ConvertCtoF(NTCReadInC(10000, Resistance)), 2).toInt();
-  } else {
-    Value = FloatToIntFixed(NTCReadInC(10000, Resistance), 2).toInt();
-  }
-
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 5, 0x0A, byte("R"), highByte(Value), lowByte(Value), 0x00, 0x00, 0x00, 0x00);
-  } else {
-    SendSerial("DeviceTemp:0x0B:" + String(Value));
-  }
-}
-
 void MaxSensorChannel(bool FromSerial) {
   if (FromSerial == false) {
     CanBusSend(DeviceAddress, 1, 0x0B, byte(MaxChannelNumber), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
@@ -764,6 +756,14 @@ void MinSensorChannelRange(bool FromSerial, int Channel) {
     SendSerial("Min Sensor Channel Range:0x0D:" + String(Channel) + ":" + String(SensorMin[Channel]));
   }
 }
+
+void SensorChannelType(bool FromSerial, int Channel) {
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 4, 0x11, byte("R"), byte(Channel), highByte(SensorType[Channel]), lowByte(SensorType[Channel]), 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("Min Sensor Channel Range:0x11:" + String(Channel) + ":" + String(SensorType[Channel]));
+  }
+}
 //----------------------------------------------------------------------------------------------------
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
@@ -771,7 +771,21 @@ void MinSensorChannelRange(bool FromSerial, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Device Temp
 //----------------------------------------------------------------------------------------------------
+void DeviceTemp(bool FromSerial) {
+  float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
+  int Value = 0;
+  if (GetUnitSystemFromMemory() == 'I') {
+    Value = FloatToIntFixed(ConvertCtoF(NTCReadInC(10000, Resistance)), 2).toInt();
+  } else {
+    Value = FloatToIntFixed(NTCReadInC(10000, Resistance), 2).toInt();
+  }
 
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 5, 0x0A, byte("R"), highByte(Value), lowByte(Value), 0x00, 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("DeviceTemp:0x0B:" + String(Value));
+  }
+}
 //----------------------------------------------------------------------------------------------------
 //End Of Device Temp
 //----------------------------------------------------------------------------------------------------
