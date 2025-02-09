@@ -27,8 +27,9 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 long PacingTimer;
 #define DeviceType 2
 #define MaxChannelNumber 2
-int SensorMin[] = { -40, -40, -40};
-int SensorMax[] = {650, 650, 650};
+const int SensorMin[] PROGMEM= { -40, -40, -40};
+const int SensorMax[] PROGMEM= {650, 650, 650};
+const int SensorType[] PROGMEM = { 2, 2, 2};
 Adafruit_MAX31865 Channel0 = Adafruit_MAX31865(3);
 Adafruit_MAX31865 Channel1 = Adafruit_MAX31865(4);
 Adafruit_MAX31865 Channel2 = Adafruit_MAX31865(5);
@@ -37,31 +38,30 @@ Adafruit_MAX31865 *RTDPointers [3] = {&Channel0, &Channel1, &Channel2};
 #define RNOMINAL  100.0
 
 uint8_t ErrorNumber = 0;
+uint8_t ErrorCommandNumber = 0;
 char UNITS = 'I';
 
 #define ComPort Serial
 String inputString = "";  // a String to hold incoming data from ports
 
-const char *const AcceptedCommands[] = {
-  "UNITS?",
+const char *const AcceptedCommands[] PROGMEM = {
   "ERROR?",
   "STREAMING?",
-  "UNITSYSTEM?",
-  "RESETERROR",
+  "USYSTEM?",
+  "RESETERR",
   "REBOOT",
   "PACING?",
+  "ADDR?",
+  "TEMP?"
 };
 
-const char *ParameterCommands[] = {
+const char *const ParameterCommands[] PROGMEM = {
   "SETUNITSYSTEM",
   "SETSTREAMING",
   "SETPACINGTIME",
-  "SETDEVICEADDRESS"
+  "SETDEVICEADDR",
+  "GETUABR"
 };
-
-
-//Function Prototypes
-//void CanBusSend(int DataLength, byte Zero, byte One=0x00, byte Two=0x00, byte Three=0x00, byte Four=0x00, byte Five=0x00, byte Six=0x00, byte Seven=0x00);
 
 void setup() {
   ComPort.begin(115200);
@@ -99,6 +99,10 @@ void loop() {
       }
       PacingTimer = CurrentTime;
     }
+  }
+
+  if (ErrorNumber <=1 && ErrorNumber <= 4){
+    ResetError(true);
   }
 
   serialEvent();
@@ -230,7 +234,7 @@ void ParamCommandToCall(int Index, String CommandRaw) {
         if (ThingToTest == "M") {
           FilteredCommand = 'M';
         }
-        UnitsSystemSet(-1, FilteredCommand);
+        UnitsSystemSet(true, FilteredCommand);
       } else {
         SendSerial("%R,Error,Invalid Parameter, I or M");
       }
@@ -238,7 +242,7 @@ void ParamCommandToCall(int Index, String CommandRaw) {
     case 1:
       //SETSTREAMING
       if (ThingToTest == "0" || ThingToTest == "1") {
-        StreamingModeSet(-1, ThingToTest.toInt());
+        StreamingModeSet(true, ThingToTest.toInt());
       } else {
         SendSerial("%R,Error,Invalid Parameter, 0 or 1");
       }
@@ -246,11 +250,15 @@ void ParamCommandToCall(int Index, String CommandRaw) {
     case 2:
       //SETPACINGTIME
 
-      PacingSet(-1, ThingToTest.toInt());
+      PacingSet(true, ThingToTest.toInt());
       break;
     case 3:
       //SETDEVICEADDRESS
       SetDeviceAddress(ThingToTest.toInt());
+      break;
+    case 4:
+      //GETUNITABR
+      UnitsABRResponse(true, ThingToTest.toInt());
       break;
   }
 }
@@ -258,34 +266,33 @@ void ParamCommandToCall(int Index, String CommandRaw) {
 void CommandToCall(int Index) {
   switch (Index) {
     case 0:
-      //UNITS?
-      UnitsABRResponse(-1);
+      //ERROR?
+      GetError(true);
       break;
     case 1:
-      //ERROR?
-      GetError(-1);
+      //STREAMING?
+      StreamingModeResponse(true);
       break;
     case 2:
-      //STREAMING?
-      StreamingModeResponse(-1);
+      //UNITSYSTEM?
+      UnitsSystemResponse(true);
       break;
     case 3:
-      //UNITSYSTEM?
-      UnitsSystemResponse(-1);
+      //RESETERROR
+      SendSerial("Error Reset:0x08");
+      ResetError(true);
       break;
     case 4:
-      //RESETERROR
-      SendSerial("Error Reset:0x05");
-      ResetError(-1);
+      //REBOOT
+      RebootDevice();
       break;
     case 5:
-      //REBOOT
-      SendSerial("Rebooting:0x06");
-      RebootDevice(-1);
+      //PACING?
+      PacingResponse(true);
       break;
     case 6:
-      //PACING?
-      PacingResponse(-1);
+      //TEMP?
+      DeviceTemp(true);
       break;
   }
 }
@@ -312,12 +319,16 @@ bool WPacingValueCheck(int Value) {
 
 void SetError(int Number, int CommandNumber) {
   ErrorNumber = Number;
-
+  ErrorCommandNumber = CommandNumber;
+  GetError(false);
+  GetError(true);
 }
 
-void ResetError(int ReplyToAddress) {
+void ResetError(bool FromSerial) {
   ErrorNumber = 0;
-  GetError(ReplyToAddress);
+  ErrorCommandNumber = 0;
+  GetError(false);
+  GetError(true);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of System related functions
@@ -366,123 +377,134 @@ void CANBusRecieveCheck() {
 
   //Check if Discovery do not filter by ID
 
-  Serial.print("got some CAN Data:ID:");
-  Serial.print(CAN.getCanId());
+  // Serial.print("got some CAN Data:ID:");
+  // Serial.print(CAN.getCanId());
 
-  Serial.print(" Data:");
-  for (uint8_t i = 0; i < 8; i++) {
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.print(cdata[i], HEX);
-    Serial.print(",");
-  }
-  Serial.println();
+  // Serial.print(" Data:");
+  // for (uint8_t i = 0; i < 8; i++) {
+  //   Serial.print(i);
+  //   Serial.print(": ");
+  //   Serial.print(cdata[i], HEX);
+  //   Serial.print(",");
+  // }
+  // Serial.println();
 
   if ((CAN.getCanId() > 9 && CAN.getCanId() < 20) && (cdata[0] == 0x00 && cdata[1] == 0x3F && cdata[2] == 0x00 && cdata[3] == 0xFF && cdata[4] == 0x00 && cdata[5] == 0xFF && cdata[6] == 0x00 && cdata[7] == 0xFF)) {
     DiscoveryResponse();
-  } //else {
-  //    //Check if this is the target device
-  //    if (CAN.getCanId() == DeviceAddress){
-  //      int CommandNumber = cdata[0];
-  //      int OtherData = cdata[1];
-  //      Serial.print("CommandNumber:");
-  //      Serial.print(CommandNumber);
-  //      Serial.print("  ::OtherData:");
-  //      Serial.println(OtherData);
-  //      switch (CommandNumber) {
-  //        case 1:  //State
-  //          StatusResponse(OtherData);
-  //          break;
-  //        case 3:  //Streaming
-  //          if (OtherData == '?') {
-  //            StreamingModeResponse();
-  //          }
-  //          if (OtherData == 'S') {
-  //            if (cdata[4] == 0x00) {
-  //              StreamingModeSet(ReplyAddress, false);
-  //            }
-  //            if (cdata[4] == 0xFF) {
-  //              StreamingModeSet(ReplyAddress, true);
-  //            }
-  //          }
-  //          break;
-  //        case 4:  //Pacing
-  //          if (WhatKindOfCommand == '?') {
-  //            PacingResponse(ReplyAddress);
-  //          }
-  //          if (WhatKindOfCommand == 'S') {
-  //            int Data = cdata[4] << 8 + cdata[5];
-  //            PacingSet(ReplyAddress, Data);
-  //          }
-  //          break;
-  //        case 5:  //Unit System
-  //          if (WhatKindOfCommand == '?') {
-  //            UnitsSystemResponse(ReplyAddress);
-  //          }
-  //          if (WhatKindOfCommand == 'S') {
-  //            UnitsSystemSet(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        case 6:  //I/O
-  //          if (WhatKindOfCommand == 'S') {
-  //            IOSet(ReplyAddress, cdata[4], cdata[5]);
-  //          }
-  //          break;
-  //        case 7:  //Error?
-  //          if (WhatKindOfCommand == '?') {
-  //            GetError(ReplyAddress);
-  //          }
-  //          break;
-  //        case 8:  //Unit ABR
-  //          if (WhatKindOfCommand == '?') {
-  //            UnitsABRResponse(ReplyAddress);
-  //          }
-  //          break;
-  //        case 9:  //Error Reset
-  //          if (WhatKindOfCommand == 'S') {
-  //            ResetError(ReplyAddress);
-  //          }
-  //          break;
-  //        case 10:  //Reboot
-  //          if (WhatKindOfCommand == 'S') {
-  //            RebootDevice(ReplyAddress);
-  //          }
-  //          break;
-  //        case 11:  //Device Temp
-  //          if (WhatKindOfCommand == '?') {
-  //            DeviceTemp(ReplyAddress);
-  //          }
-  //          break;
-  //        case 12:  //Max Sensor Channel
-  //          if (WhatKindOfCommand == '?') {
-  //            MaxSensorChannel(ReplyAddress);
-  //          }
-  //          break;
-  //        case 13:  //Sensor Channel Range Max
-  //          if (WhatKindOfCommand == '?') {
-  //            MaxSensorChannelRange(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        case 14:  //Sensor Channel Range Min
-  //          if (WhatKindOfCommand == '?') {
-  //            MinSensorChannelRange(ReplyAddress, cdata[4]);
-  //          }
-  //          break;
-  //        default:
-  //          ErrorNumber = 0x01;
-  //          GetError(ReplyAddress);
-  //          ErrorNumber = 0x00;
-  //          break;
-  //      }
-  //    }
-  //  }
+  } else {
+    //Check if this is the target device
+    if (CAN.getCanId() == DeviceAddress) {
+      switch (cdata[0]) {
+        case 1:  //State
+          if (cdata[1] == '?') {
+            StatusResponse(cdata[2]);
+          }
+          break;
+
+        case 2:  //Streaming
+          switch (cdata[1]) {
+            case '?':
+              // do your query
+              StreamingModeResponse(false);
+              break;
+            case 'S':
+              // do your set
+              StreamingModeSet(false, cdata[2]);
+              break;
+          }
+          break;
+
+        case 3:  //Pacing
+          switch (cdata[1]) {
+            case '?':
+              // do your query
+              break;
+            case 'S':
+              // do your set
+              break;
+          }
+          break;
+
+        case 4:  //Units
+          switch (cdata[1]) {
+            case '?':
+              UnitsSystemResponse(false);
+              break;
+            case 'S':
+              UnitsSystemSet(false, cdata[2]);
+              break;
+          }
+          break;
+
+        case 6:  //Error Query
+          if (cdata[1] == '?') {
+            GetError(false);
+          }
+          break;
+
+        case 7:  //Unit ABR Query
+          if (cdata[1] == '?') {
+            UnitsABRResponse(false, cdata[2]);
+          }
+          break;
+
+        case 8:  //Error Reset
+          if (cdata[1] == 'S') {
+            ResetError(false);
+          }
+          break;
+
+        case 9:  //Reboot Device
+          //need to do a complete packet check3
+          if (cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0x0A) {
+            RebootDevice();
+          }
+          break;
+
+        case 10:  //Device Temp
+          if (cdata[1] == '?') {
+            DeviceTemp(false);
+          }
+          break;
+
+        case 11:  //Max Sensor channels
+          if (cdata[1] == '?') {
+            MaxSensorChannel(false);
+          }
+          break;
+
+        case 12:  //Sensor channel Range Max
+          if (cdata[1] == '?') {
+            MaxSensorChannelRange(false, cdata[2]);
+          }
+          break;
+
+        case 13:  //Sensor channel Range Min
+          if (cdata[1] == '?') {
+            MinSensorChannelRange(false, cdata[2]);
+          }
+          break;
+
+        case 17:  //Sensor channel Type
+          if (cdata[1] == '?') {
+            SensorChannelType(false, cdata[2]);
+          }
+          break;
+
+        default:
+          GetError(1);
+          ResetError(false);
+          break;
+      }
+    }
+  }
 }
 
 void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength + 1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -533,7 +555,7 @@ unsigned int GetPacingTimeFromMemory() {
   //     EEPROM.update(3, highByte(250));
   //     EEPROM.update(2, lowByte(250));
   //  }
-  return 3000;
+  return 2500;
 }
 
 void UpdatePacingTime(int Data) {
@@ -550,7 +572,7 @@ void UpdatePacingTime(int Data) {
 //----------------------------------------------------------------------------------------------------
 void DiscoveryResponse() {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
+    
     :type ReplyToAddress: int
     :return: None
     :rtype: None
@@ -558,22 +580,22 @@ void DiscoveryResponse() {
   CanBusSend(byte(DeviceAddress), 7, 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()));
 }
 
-void GetError(int ReplyToAddress) {
+void GetError(bool FromSerial) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
+    
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x07, byte(ErrorNumber), 0x00, 0x00, 0x00);
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 3, byte('R'), ErrorNumber, ErrorCommandNumber, 0x00, 0x00, 0x00, 0x00, 0x00);
   } else {
-    SendSerial("Error:0x07:" + String(ErrorNumber));
+    SendSerial("Error:0x06:" + String(ErrorNumber) + ":" + String(ErrorCommandNumber));
   }
 }
 
-void RebootDevice(int ReplyToAddress) {
-  CanBusSend(DeviceAddress, 7, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x10, 0xFF, 0x10, 0xFF, 0x10);
+void RebootDevice() {
+  CanBusSend(DeviceAddress, 7, 0x09, 0xFF, 0x0A, 0x0A, 0xFF, 0x0A, 0x0A, 0x0A);
   SendSerial("Device is Rebooting");
   delay(2500);
   resetFunc();
@@ -581,72 +603,68 @@ void RebootDevice(int ReplyToAddress) {
 
 void StatusResponse(int ChannelNumber) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+    , defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
+  if (ChannelRangeCheck(ChannelNumber) == true) {
 
-    int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
+    int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
 
-    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType), 0x00, 0x00, 0x00);
-    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(DeviceType));
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
-    ErrorNumber = 3;
-    SendSerial("Error:0x01" + ErrorNumber);
-    ErrorNumber = 0;
+    SetError(3, 0x1);
   }
 }
 
-void StreamingModeResponse(int ReplyToAddress) {
+void StreamingModeResponse(bool FromSerial) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
+    
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x03, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00);
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 2, 0x02, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
   } else {
     SendSerial("StreamingMode:0x03:" + String(GetStreamingFromMemory()));
   }
 }
 
-void StreamingModeSet(int ReplyToAddress, int Data) {
+void StreamingModeSet(bool FromSerial, int Data) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
-    :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
 
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
+    StreamingModeResponse(FromSerial);
   } else {
-    Serial.print("Error");
+    SetError(3, 0x02);
   }
-  StreamingModeResponse(ReplyToAddress);
 }
 
-void PacingResponse(int ReplyToAddress) {
+void PacingResponse(bool FromSerial) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header, defaults to -1
+    , defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 6, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x04, highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00);
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 3, 0x03, byte("R"), highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00, 0x00, 0x00);
   } else {
     SendSerial("Pacing:0x04:" + String(GetPacingTimeFromMemory()));
   }
 }
 
-void PacingSet(int ReplyToAddress, int Data) {
+void PacingSet(bool FromSerial, int Data) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
+    
     :type ReplyToAddress: int
     :return: None
     :rtype: None
@@ -654,28 +672,28 @@ void PacingSet(int ReplyToAddress, int Data) {
   if (Data >= 250 && Data <= 65535) {
     EEPROM.update(3, highByte(Data));
     EEPROM.update(2, lowByte(Data));
+    PacingResponse(FromSerial);
+  } else {
+    SetError(3, 0x03);
   }
-  PacingResponse(ReplyToAddress);
 }
 
-void UnitsSystemResponse(int ReplyToAddress) {
+void UnitsSystemResponse(bool FromSerial) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
-    :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
 
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x05, byte(GetUnitSystemFromMemory()), 0x00, 0x00, 0x00);
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 1, 0x04, byte(GetUnitSystemFromMemory()), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
   } else {
-    SendSerial("UnitsSystem:0x05:" + String(GetUnitSystemFromMemory()));
+    SendSerial("UnitsSystem:0x04:" + String(GetUnitSystemFromMemory()));
   }
 }
 
-void UnitsSystemSet(int ReplyToAddress, char Data) {
+void UnitsSystemSet(bool FromSerial, char Data) {
   /*
-    :param ReplyToAddress: reply address to put into the CAN packet header
+    
     :type ReplyToAddress: int
     :return: None
     :rtype: None
@@ -683,96 +701,109 @@ void UnitsSystemSet(int ReplyToAddress, char Data) {
 
   if (Data == 'I' || Data == 'M') {
     EEPROM.update(4, Data);
+    UnitsSystemResponse(FromSerial);
+  } else {
+    SetError(3, 0x04);
   }
-  UnitsSystemResponse(ReplyToAddress);
 }
 
-void UnitsABRResponse(int ReplyToAddress) {
+void UnitsABRResponse(bool FromSerial, int Channel) {
   /*
-
-    :param ReplyToAddress: reply address to put into the CAN packet header
-    :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
-  byte ABR = 0x00;
-  switch (DeviceType) {
-    case 1:  // Current
-      ABR = 0x01;
-      break;
-    case 2:  // Temp
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x03;
-      } else {
-        ABR = 0x02;
-      }
-      break;
-    case 3:  // Voltage
-      ABR = 0x04;
-      break;
-    case 4:  // Pressure
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x06;
-      } else {
-        ABR = 0x05;
-      }
-      break;
-    case 5:  // Vacuum
-      if (GetUnitSystemFromMemory() == 'I') {
-        ABR = 0x08;
-      } else {
-        ABR = 0x07;
-      }
-      break;
-    case 6:  // I/O
-      ABR = 0x09;
-      break;
-    case 7:  // RPM
-      ABR = 0x0A;
-      break;
-  }
+  if (ChannelRangeCheck(Channel) == true) {
+    byte ABR = 0x00;
+    switch (SensorType[Channel]) {
+      case 1:  // Current
+        ABR = 0x01;
+        break;
+      case 2:  // Temp
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x03;
+        } else {
+          ABR = 0x02;
+        }
+        break;
+      case 3:  // Voltage
+        ABR = 0x04;
+        break;
+      case 4:  // Pressure
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x06;
+        } else {
+          ABR = 0x05;
+        }
+        break;
+      case 5:  // Vacuum
+        if (GetUnitSystemFromMemory() == 'I') {
+          ABR = 0x08;
+        } else {
+          ABR = 0x07;
+        }
+        break;
+      case 6:  // I/O
+        ABR = 0x09;
+        break;
+      case 7:  // RPM
+        ABR = 0x0A;
+        break;
+    }
 
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 4, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x08, ABR, 0x00, 0x00, 0x00);
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 3, 0x07, byte("R"), Channel, ABR, 0x00, 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("UnitABR:0x07:" + String(Channel) + ":" + String(ABR));
+    }
   } else {
-    SendSerial("UnitABR:0x08:" + String(ABR));
+    SetError(3, 0x07);
   }
 }
 
-void DeviceTemp(int ReplyToAddress) {
-  float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
-  int Value = ConvertCtoF(NTCReadInC(10000, Resistance)) * 100;
-
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0B, highByte(Value), lowByte(Value), 0x00, 0x00);
+void MaxSensorChannel(bool FromSerial) {
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 1, 0x0B, byte(MaxChannelNumber), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
   } else {
-    SendSerial("DeviceTemp:0x0B:" + String(Value));
+    SendSerial("Max Sensor Channel:0x0B:" + String(MaxChannelNumber));
   }
 }
 
-void MaxSensorChannel(int ReplyToAddress) {
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0C, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+void MaxSensorChannelRange(bool FromSerial, int Channel) {
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x0C, byte("R"), byte(Channel), highByte(SensorMax[Channel]), lowByte(SensorMax[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Max Sensor Channel Range:0x0C:" + String(Channel) + ":" + String(SensorMax[Channel]));
+    }
   } else {
-    SendSerial("Max Sensor Channel:0x0C:" + String(MaxChannelNumber));
+    SetError(3, 0x0C);
   }
 }
 
-void MaxSensorChannelRange(int ReplyToAddress, int Channel) {
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0D, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+void MinSensorChannelRange(bool FromSerial, int Channel) {
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x0D, byte("R"), byte(Channel), highByte(SensorMin[Channel]), lowByte(SensorMin[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Min Sensor Channel Range:0x0D:" + String(Channel) + ":" + String(SensorMin[Channel]));
+    }
   } else {
-    SendSerial("Max Sensor Channel Range:0x0D:" + String(MaxChannelNumber));
+    SetError(3, 0x0D);
   }
 }
 
-void MinSensorChannelRange(int ReplyToAddress, int Channel) {
-  if (ReplyToAddress != -1) {
-    CanBusSend(DeviceAddress, 5, highByte(ReplyToAddress), lowByte(ReplyToAddress), byte("R"), 0x0E, byte(MaxChannelNumber), 0x00, 0x00, 0x00);
+void SensorChannelType(bool FromSerial, int Channel) {
+  if (ChannelRangeCheck(Channel) == true) {
+    if (FromSerial == false) {
+      CanBusSend(DeviceAddress, 4, 0x11, byte("R"), byte(Channel), highByte(SensorType[Channel]), lowByte(SensorType[Channel]), 0x00, 0x00, 0x00);
+    } else {
+      SendSerial("Min Sensor Channel Range:0x11:" + String(Channel) + ":" + String(SensorType[Channel]));
+    }
   } else {
-    SendSerial("Min Sensor Channel Range:0x0E:" + String(MaxChannelNumber));
+    SetError(3, 0x11);
   }
 }
+
 //----------------------------------------------------------------------------------------------------
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
@@ -780,7 +811,21 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Device Temp
 //----------------------------------------------------------------------------------------------------
+void DeviceTemp(bool FromSerial) {
+  float Resistance = log(10000 * ((5.0 / ((5.0 / 1023) * ReadAnalog(10, A0))) - 1));
+  int Value = 0;
+  if (GetUnitSystemFromMemory() == 'I') {
+    Value = FloatToIntFixed(ConvertCtoF(NTCReadInC(10000, Resistance)), 2).toInt();
+  } else {
+    Value = FloatToIntFixed(NTCReadInC(10000, Resistance), 2).toInt();
+  }
 
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 5, 0x0A, byte("R"), highByte(Value), lowByte(Value), 0x00, 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("DeviceTemp:0x0B:" + String(Value));
+  }
+}
 //----------------------------------------------------------------------------------------------------
 //End Of Device Temp
 //----------------------------------------------------------------------------------------------------
@@ -789,6 +834,14 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
+bool ChannelRangeCheck(int Channel) {
+  if (Channel <= 0 && Channel <= MaxChannelNumber) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 float ReadAnalog(int Samples, int PinNumber) {
   long Sum = 0;
   float Value = 0;
