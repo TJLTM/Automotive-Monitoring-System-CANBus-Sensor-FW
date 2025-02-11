@@ -290,7 +290,7 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool WPacingValueCheck(int Value) {
+bool PacingValueCheck(int Value) {
   Serial.println("PacingValueCheck");
   Serial.println(Value);
   if (Value >= 250 && Value <= 65535) {
@@ -535,17 +535,17 @@ int GetStreamingFromMemory() {
 
 unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-  //  if (Value > 250 && Value < 65535) {
-  //     EEPROM.update(3, highByte(250));
-  //     EEPROM.update(2, lowByte(250));
-  //  }
-  return 2500;
+    unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+    if (PacingValueCheck(Value) == false) {
+      //default to 2.5 seconds
+      UpdatePacingTime(2500);
+   }
+  return Value;
 }
 
 void UpdatePacingTime(int Data) {
-  EEPROM.update(2, highByte(Data));
-  EEPROM.update(3, lowByte(Data));
+  EEPROM.update(3, highByte(Data));
+  EEPROM.update(2, lowByte(Data));
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -654,9 +654,8 @@ void PacingSet(bool FromSerial, int Data) {
     :return: None
     :rtype: None
   */
-  if (Data >= 250 && Data <= 65535) {
-    EEPROM.update(3, highByte(Data));
-    EEPROM.update(2, lowByte(Data));
+  if (PacingValueCheck(Data) == true){
+    UpdatePacingTime(Data);
     PacingResponse(FromSerial);
   } else {
     SetError(3, 0x03);
