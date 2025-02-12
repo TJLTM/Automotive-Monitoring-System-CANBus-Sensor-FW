@@ -90,9 +90,9 @@ void loop() {
     }
   }
 
-  //if (ErrorNumber <= 1 && ErrorNumber <= 4) {
-  //  ResetError(true);
-  //}
+  if (ErrorNumber <=1 && ErrorNumber <= 4){
+    ResetError(true);
+  }
 
   serialEvent();
 }

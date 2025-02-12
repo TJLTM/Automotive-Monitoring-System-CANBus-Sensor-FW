@@ -64,6 +64,10 @@ void setup() {
   ComPort.print("Streaming:");
   ComPort.println(GetStreamingFromMemory());
 
+  if (PacingValueCheck(GetPacingTimeFromMemory()) == false) {
+    UpdatePacingTime(2500);
+  }
+
   ComPort.print("Pacing:");
   ComPort.println(GetPacingTimeFromMemory());
 
@@ -83,9 +87,9 @@ void loop() {
     }
   }
 
-  if (ErrorNumber <=1 && ErrorNumber <= 4){
-    ResetError(true);
-  }
+  //if (ErrorNumber <= 1 && ErrorNumber <= 4) {
+  //  ResetError(true);
+  //}
 
   serialEvent();
 }
@@ -287,11 +291,8 @@ void CommandToCall(int Index) {
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
 
-bool WPacingValueCheck(int Value) {
-  Serial.println("PacingValueCheck");
-  Serial.println(Value);
+bool PacingValueCheck(int Value) {
   if (Value >= 250 && Value <= 65535) {
-    Serial.println("asdf");
     return true;
   } else {
     SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
@@ -532,17 +533,13 @@ int GetStreamingFromMemory() {
 
 unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-  //  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-  //  if (Value > 250 && Value < 65535) {
-  //     EEPROM.update(3, highByte(250));
-  //     EEPROM.update(2, lowByte(250));
-  //  }
-  return 2500;
+  unsigned int Value = word(EEPROM.read(3), EEPROM.read(2));
+  return Value;
 }
 
-void UpdatePacingTime(int Data) {
-  EEPROM.update(2, highByte(Data));
-  EEPROM.update(3, lowByte(Data));
+void UpdatePacingTime(unsigned int Data) {
+  EEPROM.update(3, highByte(Data));
+  EEPROM.update(2, lowByte(Data));
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -585,15 +582,12 @@ void RebootDevice() {
 
 void StatusResponse(int ChannelNumber) {
   /*
-    , defaults to -1
     :type ReplyToAddress: int
     :return: None
     :rtype: None
   */
   if (ChannelRangeCheck(ChannelNumber) == true) {
-
     int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
-
     CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
@@ -651,9 +645,8 @@ void PacingSet(bool FromSerial, int Data) {
     :return: None
     :rtype: None
   */
-  if (Data >= 250 && Data <= 65535) {
-    EEPROM.update(3, highByte(Data));
-    EEPROM.update(2, lowByte(Data));
+  if (PacingValueCheck(Data) == true) {
+    UpdatePacingTime(Data);
     PacingResponse(FromSerial);
   } else {
     SetError(3, 0x03);
@@ -817,7 +810,7 @@ void DeviceTemp(bool FromSerial) {
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 bool ChannelRangeCheck(int Channel) {
-  if (Channel <= 0 && Channel <= MaxChannelNumber) {
+  if (Channel >= 0 && Channel <= MaxChannelNumber) {
     return true;
   } else {
     return false;
