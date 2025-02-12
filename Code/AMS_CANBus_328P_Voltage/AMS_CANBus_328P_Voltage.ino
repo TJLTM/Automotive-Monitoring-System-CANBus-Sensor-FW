@@ -67,7 +67,7 @@ void setup() {
   ComPort.print("Streaming:");
   ComPort.println(GetStreamingFromMemory());
 
-  if (PacingValueCheck(GetPacingTimeFromMemory()) == false){
+  if (PacingValueCheck(GetPacingTimeFromMemory()) == false) {
     UpdatePacingTime(2500);
   }
 
@@ -589,15 +589,13 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
-  Serial.println(ChannelNumber);
   if (ChannelRangeCheck(ChannelNumber) == true) {
-
     int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
     CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
-    //SetError(3, 0x1);
+    SetError(3, 0x1);
   }
 }
 
@@ -815,7 +813,7 @@ void DeviceTemp(bool FromSerial) {
 //Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 bool ChannelRangeCheck(int Channel) {
-  if (Channel <= 0 && Channel <= MaxChannelNumber) {
+  if (Channel >= 0 && Channel <= MaxChannelNumber) {
     return true;
   } else {
     return false;
@@ -874,11 +872,21 @@ int SensorCode(int ChannelNumber) {
     Read Sensor Value here for that channel
     convert that to fixed point value as an INT and return it.
   */
+
   int Value = 0;
-  if (ChannelNumber < 3) {
-    Value = PressureSensor(ChannelNumber);
-  } else {
-    Value = CurrentSensor(ChannelNumber);
+  switch (ChannelNumber) {
+    case 0:
+      Value = PressureSensor(ChannelNumber);
+      break;
+    case 1:
+      Value = PressureSensor(ChannelNumber);
+      break;
+    case 2:
+      Value = PressureSensor(ChannelNumber);
+      break;
+    case 3:
+      Value = CurrentSensor(ChannelNumber);
+      break;
   }
 
   return Value;
@@ -904,6 +912,7 @@ int CurrentSensor(int ChannelNumber) {
     DNAdjusted = map(DN, Center, 0, 0, Center);  //Positive Case
   }
   double Amps = (DNAdjusted * 0.00488758) / AmpPermV;
+
   return FloatToIntFixed(Amps, 1).toInt();
 }
 
