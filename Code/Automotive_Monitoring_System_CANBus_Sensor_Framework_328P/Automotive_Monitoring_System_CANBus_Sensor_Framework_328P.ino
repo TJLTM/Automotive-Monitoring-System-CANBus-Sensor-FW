@@ -87,9 +87,9 @@ void loop() {
     }
   }
 
-  //if (ErrorNumber <= 1 && ErrorNumber <= 4) {
-  //  ResetError(true);
-  //}
+  if (ErrorNumber <= 1 && ErrorNumber <= 4) {
+    ResetError();
+  }
 
   serialEvent();
 }
@@ -235,7 +235,6 @@ void ParamCommandToCall(int Index, String CommandRaw) {
       break;
     case 2:
       //SETPACINGTIME
-
       PacingSet(true, ThingToTest.toInt());
       break;
     case 3:
@@ -265,8 +264,7 @@ void CommandToCall(int Index) {
       break;
     case 3:
       //RESETERROR
-      SendSerial("Error Reset:0x08");
-      ResetError(true);
+      ResetError();
       break;
     case 4:
       //REBOOT
@@ -307,11 +305,24 @@ void SetError(int Number, int CommandNumber) {
   GetError(true);
 }
 
-void ResetError(bool FromSerial) {
+void ResetError() {
+  CanBusSend(DeviceAddress, 7, byte('R'), ErrorNumber, ErrorCommandNumber, 0x0A, 0xFF, 0x0A, 0xFF, 0x0A);
+  SendSerial("Reset Error:0x08:" + String(ErrorNumber) + ":" + String(ErrorCommandNumber));
   ErrorNumber = 0;
   ErrorCommandNumber = 0;
-  GetError(false);
-  GetError(true);
+}
+
+void GetError(bool FromSerial) {
+  /*
+    
+    :return: None
+    :rtype: None
+  */
+  if (FromSerial == false) {
+    CanBusSend(DeviceAddress, 3, byte('R'), ErrorNumber, ErrorCommandNumber, 0x00, 0x00, 0x00, 0x00, 0x00);
+  } else {
+    SendSerial("Error:0x06:" + String(ErrorNumber) + ":" + String(ErrorCommandNumber));
+  }
 }
 //----------------------------------------------------------------------------------------------------
 //End Of System related functions
@@ -381,6 +392,8 @@ void CANBusRecieveCheck() {
         case 1:  //State
           if (cdata[1] == '?') {
             StatusResponse(cdata[2]);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
@@ -394,6 +407,9 @@ void CANBusRecieveCheck() {
               // do your set
               StreamingModeSet(false, cdata[2]);
               break;
+            default:
+              SetError(3, cdata[0]);
+              break;
           }
           break;
 
@@ -404,6 +420,9 @@ void CANBusRecieveCheck() {
               break;
             case 'S':
               // do your set
+              break;
+            default:
+              SetError(3, cdata[0]);
               break;
           }
           break;
@@ -416,24 +435,33 @@ void CANBusRecieveCheck() {
             case 'S':
               UnitsSystemSet(false, cdata[2]);
               break;
+            default:
+              SetError(3, cdata[0]);
+              break;
           }
           break;
 
         case 6:  //Error Query
           if (cdata[1] == '?') {
             GetError(false);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 7:  //Unit ABR Query
           if (cdata[1] == '?') {
             UnitsABRResponse(false, cdata[2]);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 8:  //Error Reset
-          if (cdata[1] == 'S') {
-            ResetError(false);
+          if (cdata[1] == 'S' && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0xFF && cdata[1] == 0xFF && cdata[1] == 0xFF) {
+            ResetError();
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
@@ -441,42 +469,53 @@ void CANBusRecieveCheck() {
           //need to do a complete packet check3
           if (cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0xFF && cdata[1] == 0x0A && cdata[1] == 0x0A && cdata[1] == 0x0A) {
             RebootDevice();
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 10:  //Device Temp
           if (cdata[1] == '?') {
             DeviceTemp(false);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 11:  //Max Sensor channels
           if (cdata[1] == '?') {
             MaxSensorChannel(false);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 12:  //Sensor channel Range Max
           if (cdata[1] == '?') {
             MaxSensorChannelRange(false, cdata[2]);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 13:  //Sensor channel Range Min
           if (cdata[1] == '?') {
             MinSensorChannelRange(false, cdata[2]);
+          } else {
+            SetError(3, cdata[0]);
           }
           break;
 
         case 17:  //Sensor channel Type
           if (cdata[1] == '?') {
             SensorChannelType(false, cdata[2]);
+          } else {
           }
+          SetError(3, cdata[0]);
           break;
 
         default:
-          GetError(1);
-          ResetError(false);
+          SetError(1, cdata[0]);
           break;
       }
     }
@@ -557,20 +596,6 @@ void DiscoveryResponse() {
     :rtype: None
   */
   CanBusSend(byte(DeviceAddress), 7, 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()), byte(GetUnitSystemFromMemory()));
-}
-
-void GetError(bool FromSerial) {
-  /*
-    
-    :type ReplyToAddress: int
-    :return: None
-    :rtype: None
-  */
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 3, byte('R'), ErrorNumber, ErrorCommandNumber, 0x00, 0x00, 0x00, 0x00, 0x00);
-  } else {
-    SendSerial("Error:0x06:" + String(ErrorNumber) + ":" + String(ErrorCommandNumber));
-  }
 }
 
 void RebootDevice() {
