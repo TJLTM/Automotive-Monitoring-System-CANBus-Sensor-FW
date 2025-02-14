@@ -25,8 +25,11 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 //Device Configuration setting
 long PacingTimer;
 #define DeviceType 0
-#define MaxChannelNumber 1
-
+#define MaxChannelNumber 0
+const int SensorPins[] PROGMEM = { A1, A2, A3, A4 }; // Check wiring of board to set these correctly
+const int SensorType[] PROGMEM = { 1, 1, 1, 1 }; //reference the API sheet for types
+const int SensorMin[] PROGMEM = { 0, 0, 0, 0 }; // min value of channel
+const int SensorMax[] PROGMEM = { 1000, 1000, 1000, 1000 }; // max value of channel
 uint8_t ErrorNumber = 0;
 uint8_t ErrorCommandNumber = 0;
 char UNITS = 'I';
