@@ -24,9 +24,8 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 
 //Device Configuration setting
 long PacingTimer;
-#define DeviceType 0
-#define MaxChannelNumber 3
-
+#define DeviceType 9
+#define MaxChannelNumber 0
 #define InputPin 4
 // Red, Green, Blue, Channel 4
 const int OutputPin[] = { 3, 5, 6, 10 };
@@ -48,21 +47,16 @@ String inputString = "";  // a String to hold incoming data from ports
 
 const char *const AcceptedCommands[] PROGMEM = {
   "ERROR?",
-  "STREAMING?",
   "USYSTEM?",
   "RESETERR",
   "REBOOT",
-  "PACING?",
   "ADDR?",
   "TEMP?"
 };
 
 const char *const ParameterCommands[] PROGMEM = {
   "SETUNITSYSTEM",
-  "SETSTREAMING",
-  "SETPACINGTIME",
   "SETDEVICEADDR",
-  "GETUABR"
 };
 
 void setup() {
@@ -73,34 +67,24 @@ void setup() {
   ComPort.print("UnitSystem:");
   ComPort.println(GetUnitSystemFromMemory());
 
-  ComPort.print("Streaming:");
-  ComPort.println(GetStreamingFromMemory());
-
-  if (PacingValueCheck(GetPacingTimeFromMemory()) == false) {
-    UpdatePacingTime(2500);
-  }
-
-  ComPort.print("Pacing:");
-  ComPort.println(GetPacingTimeFromMemory());
-
   DiscoveryResponse();
 }
 
 void loop() {
   CANBusRecieveCheck();
 
-  long CurrentTime = millis();
-  if (GetStreamingFromMemory() == 1) {
-    if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
-      for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
-        StatusResponse(i);
-      }
-      PacingTimer = CurrentTime;
-    }
-  }
+  // long CurrentTime = millis();
+  // if (GetStreamingFromMemory() == 1) {
+  //   if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
+  //     for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
+  //       StatusResponse(i);
+  //     }
+  //     PacingTimer = CurrentTime;
+  //   }
+  // }
 
   if (ErrorNumber <=1 && ErrorNumber <= 4){
-    ResetError(true);
+    ResetError();
   }
 
   serialEvent();
@@ -237,25 +221,9 @@ void ParamCommandToCall(int Index, String CommandRaw) {
         SendSerial("%R,Error,Invalid Parameter, I or M");
       }
       break;
-    case 1:
-      //SETSTREAMING
-      if (ThingToTest == "0" || ThingToTest == "1") {
-        StreamingModeSet(true, ThingToTest.toInt());
-      } else {
-        SendSerial("%R,Error,Invalid Parameter, 0 or 1");
-      }
-      break;
-    case 2:
-      //SETPACINGTIME
-      PacingSet(true, ThingToTest.toInt());
-      break;
     case 3:
       //SETDEVICEADDRESS
       SetDeviceAddress(ThingToTest.toInt());
-      break;
-    case 4:
-      //GETUNITABR
-      UnitsABRResponse(true, ThingToTest.toInt());
       break;
   }
 }
@@ -265,10 +233,6 @@ void CommandToCall(int Index) {
     case 0:
       //ERROR?
       GetError(true);
-      break;
-    case 1:
-      //STREAMING?
-      StreamingModeResponse(true);
       break;
     case 2:
       //UNITSYSTEM?
@@ -281,10 +245,6 @@ void CommandToCall(int Index) {
     case 4:
       //REBOOT
       RebootDevice();
-      break;
-    case 5:
-      //PACING?
-      PacingResponse(true);
       break;
     case 6:
       //TEMP?
@@ -300,15 +260,6 @@ void CommandToCall(int Index) {
 //System related functions
 //----------------------------------------------------------------------------------------------------
 void (*resetFunc)(void) = 0;  // declare reset fuction at address 0
-
-bool PacingValueCheck(int Value) {
-  if (Value >= 250 && Value <= 65535) {
-    return true;
-  } else {
-    SendSerial("%R,Error,Invalid Parameter 250 <= x <= 65535");
-    return false;
-  }
-}
 
 void SetError(int Number, int CommandNumber) {
   ErrorNumber = Number;
@@ -409,36 +360,6 @@ void CANBusRecieveCheck() {
           }
           break;
 
-        case 2:  //Streaming
-          switch (cdata[1]) {
-            case '?':
-              // do your query
-              StreamingModeResponse(false);
-              break;
-            case 'S':
-              // do your set
-              StreamingModeSet(false, cdata[2]);
-              break;
-            default:
-              SetError(3, cdata[0]);
-              break;
-          }
-          break;
-
-        case 3:  //Pacing
-          switch (cdata[1]) {
-            case '?':
-              // do your query
-              break;
-            case 'S':
-              // do your set
-              break;
-            default:
-              SetError(3, cdata[0]);
-              break;
-          }
-          break;
-
         case 4:  //Units
           switch (cdata[1]) {
             case '?':
@@ -456,14 +377,6 @@ void CANBusRecieveCheck() {
         case 6:  //Error Query
           if (cdata[1] == '?') {
             GetError(false);
-          } else {
-            SetError(3, cdata[0]);
-          }
-          break;
-
-        case 7:  //Unit ABR Query
-          if (cdata[1] == '?') {
-            UnitsABRResponse(false, cdata[2]);
           } else {
             SetError(3, cdata[0]);
           }
@@ -501,31 +414,6 @@ void CANBusRecieveCheck() {
             SetError(3, cdata[0]);
           }
           break;
-
-        case 12:  //Sensor channel Range Max
-          if (cdata[1] == '?') {
-            MaxSensorChannelRange(false, cdata[2]);
-          } else {
-            SetError(3, cdata[0]);
-          }
-          break;
-
-        case 13:  //Sensor channel Range Min
-          if (cdata[1] == '?') {
-            MinSensorChannelRange(false, cdata[2]);
-          } else {
-            SetError(3, cdata[0]);
-          }
-          break;
-
-        case 17:  //Sensor channel Type
-          if (cdata[1] == '?') {
-            SensorChannelType(false, cdata[2]);
-          } else {
-          }
-          SetError(3, cdata[0]);
-          break;
-
         default:
           SetError(1, cdata[0]);
           break;
@@ -571,28 +459,6 @@ char GetUnitSystemFromMemory() {
   }
   return TempValue;
 }
-
-int GetStreamingFromMemory() {
-  //Read Stream Value out of EEPROM
-  int TempValue = EEPROM.read(5);
-  if (TempValue < 0 || TempValue > 1) {
-    EEPROM.update(5, 0);
-    TempValue = 0;
-  }
-  return TempValue;
-}
-
-unsigned int GetPacingTimeFromMemory() {
-  //Read Pacing value out of EEPROM
-  unsigned int Value = word(EEPROM.read(3), EEPROM.read(2));
-  return Value;
-}
-
-void UpdatePacingTime(unsigned int Data) {
-  EEPROM.update(3, highByte(Data));
-  EEPROM.update(2, lowByte(Data));
-}
-
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -623,71 +489,14 @@ void StatusResponse(int ChannelNumber) {
     :return: None
     :rtype: None
   */
-  if (ChannelRangeCheck(ChannelNumber) == true) {
-    int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
-    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
-    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
-  } else {
-    // return error that channel doesn't exist
-    SetError(3, 0x1);
-  }
-}
-
-void StreamingModeResponse(bool FromSerial) {
-  /*
-    
-    :type ReplyToAddress: int
-    :return: None
-    :rtype: None
-  */
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 2, 0x02, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-  } else {
-    SendSerial("StreamingMode:0x03:" + String(GetStreamingFromMemory()));
-  }
-}
-
-void StreamingModeSet(bool FromSerial, int Data) {
-  /*
-    :return: None
-    :rtype: None
-  */
-
-  if (Data == 0 || Data == 1) {
-    EEPROM.update(5, Data);
-    StreamingModeResponse(FromSerial);
-  } else {
-    SetError(3, 0x02);
-  }
-}
-
-void PacingResponse(bool FromSerial) {
-  /*
-    , defaults to -1
-    :type ReplyToAddress: int
-    :return: None
-    :rtype: None
-  */
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 3, 0x03, byte("R"), highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00, 0x00, 0x00);
-  } else {
-    SendSerial("Pacing:0x04:" + String(GetPacingTimeFromMemory()));
-  }
-}
-
-void PacingSet(bool FromSerial, int Data) {
-  /*
-    
-    :type ReplyToAddress: int
-    :return: None
-    :rtype: None
-  */
-  if (PacingValueCheck(Data) == true) {
-    UpdatePacingTime(Data);
-    PacingResponse(FromSerial);
-  } else {
-    SetError(3, 0x03);
-  }
+  // if (ChannelRangeCheck(ChannelNumber) == true) {
+  //   int ReturnedValue = SensorCode(ChannelNumber);  // value returned will be an int for a fixed point number
+  //   CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
+  //   SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
+  // } else {
+  //   // return error that channel doesn't exist
+  //   SetError(3, 0x1);
+  // }
 }
 
 void UnitsSystemResponse(bool FromSerial) {
@@ -718,104 +527,6 @@ void UnitsSystemSet(bool FromSerial, char Data) {
     SetError(3, 0x04);
   }
 }
-
-void UnitsABRResponse(bool FromSerial, int Channel) {
-  /*
-    :return: None
-    :rtype: None
-  */
-  if (ChannelRangeCheck(Channel) == true) {
-    byte ABR = 0x00;
-    switch (SensorType[Channel]) {
-      case 1:  // Current
-        ABR = 0x01;
-        break;
-      case 2:  // Temp
-        if (GetUnitSystemFromMemory() == 'I') {
-          ABR = 0x03;
-        } else {
-          ABR = 0x02;
-        }
-        break;
-      case 3:  // Voltage
-        ABR = 0x04;
-        break;
-      case 4:  // Pressure
-        if (GetUnitSystemFromMemory() == 'I') {
-          ABR = 0x06;
-        } else {
-          ABR = 0x05;
-        }
-        break;
-      case 5:  // Vacuum
-        if (GetUnitSystemFromMemory() == 'I') {
-          ABR = 0x08;
-        } else {
-          ABR = 0x07;
-        }
-        break;
-      case 6:  // I/O
-        ABR = 0x09;
-        break;
-      case 7:  // RPM
-        ABR = 0x0A;
-        break;
-    }
-
-    if (FromSerial == false) {
-      CanBusSend(DeviceAddress, 3, 0x07, byte("R"), Channel, ABR, 0x00, 0x00, 0x00, 0x00);
-    } else {
-      SendSerial("UnitABR:0x07:" + String(Channel) + ":" + String(ABR));
-    }
-  } else {
-    SetError(3, 0x07);
-  }
-}
-
-void MaxSensorChannel(bool FromSerial) {
-  if (FromSerial == false) {
-    CanBusSend(DeviceAddress, 1, 0x0B, byte(MaxChannelNumber), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-  } else {
-    SendSerial("Max Sensor Channel:0x0B:" + String(MaxChannelNumber));
-  }
-}
-
-void MaxSensorChannelRange(bool FromSerial, int Channel) {
-  if (ChannelRangeCheck(Channel) == true) {
-    if (FromSerial == false) {
-      CanBusSend(DeviceAddress, 4, 0x0C, byte("R"), byte(Channel), highByte(SensorMax[Channel]), lowByte(SensorMax[Channel]), 0x00, 0x00, 0x00);
-    } else {
-      SendSerial("Max Sensor Channel Range:0x0C:" + String(Channel) + ":" + String(SensorMax[Channel]));
-    }
-  } else {
-    SetError(3, 0x0C);
-  }
-}
-
-void MinSensorChannelRange(bool FromSerial, int Channel) {
-  if (ChannelRangeCheck(Channel) == true) {
-    if (FromSerial == false) {
-      CanBusSend(DeviceAddress, 4, 0x0D, byte("R"), byte(Channel), highByte(SensorMin[Channel]), lowByte(SensorMin[Channel]), 0x00, 0x00, 0x00);
-    } else {
-      SendSerial("Min Sensor Channel Range:0x0D:" + String(Channel) + ":" + String(SensorMin[Channel]));
-    }
-  } else {
-    SetError(3, 0x0D);
-  }
-}
-
-void SensorChannelType(bool FromSerial, int Channel) {
-  if (ChannelRangeCheck(Channel) == true) {
-    if (FromSerial == false) {
-      CanBusSend(DeviceAddress, 4, 0x11, byte("R"), byte(Channel), highByte(SensorType[Channel]), lowByte(SensorType[Channel]), 0x00, 0x00, 0x00);
-    } else {
-      SendSerial("Min Sensor Channel Range:0x11:" + String(Channel) + ":" + String(SensorType[Channel]));
-    }
-  } else {
-    SetError(3, 0x11);
-  }
-}
-
 //----------------------------------------------------------------------------------------------------
 //End Of General API Functions
 //----------------------------------------------------------------------------------------------------
