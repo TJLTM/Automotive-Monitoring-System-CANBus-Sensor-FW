@@ -26,6 +26,10 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 long PacingTimer;
 #define DeviceType 7
 #define MaxChannelNumber 0
+
+#define NumberOfCyl 8
+#define Strokes 4
+
 const int SensorPins[] PROGMEM = { A1, A2, A3, A4 }; // Check wiring of board to set these correctly
 const int SensorType[] PROGMEM = { 1, 1, 1, 1 }; //reference the API sheet for types
 const int SensorMin[] PROGMEM = { 0, 0, 0, 0 }; // min value of channel
@@ -898,7 +902,20 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
 
-  int Value = ChannelNumber;
+  int Value = 0;
+
+  /*
+  Math is hard and i have derived this i don't know how many times and 
+  have lost it many many times so i'm officially putting down my thought 
+  process and everything this time for all time this time, i swear.....
+
+  an american V8 (Ford/GM) works as follows, One rotation of the crank 
+  shaft will result in 2 rotations of the Distributor. We know that 
+  there are going to be 16 pulses to every rotation of the crankshaft, 
+  and 8 pulses per rotation of the Distributor.  
+  
+  
+  */
 
 
   return Value;
