@@ -16,7 +16,7 @@
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
-int DeviceAddress = 1;
+int DeviceAddress = 100;
 //uint32_t id;
 //uint8_t type;  // bit0: ext, bit1: rtr
 //const uint8_t len;
@@ -44,6 +44,7 @@ const char *const AcceptedCommands[] = {
   "RESETERROR",
   "REBOOT",
   "PACING?",
+  "ADDRESS?"
 };
 
 const char *ParameterCommands[] = {
@@ -296,12 +297,9 @@ bool WPacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number) {
-  switch (Number) {
-    case 1:
-      ErrorNumber = 1;
-      break;
-  }
+void SetError(int Number, int CommandNumber) {
+  ErrorNumber = Number;
+
 }
 
 void ResetError(int ReplyToAddress) {
@@ -471,7 +469,7 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   // ID, ext, len, byte: data
   //ext = 0 for standard frame
   byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
+  CAN.sendMsgBuf(PacketIdentifier, 0, DataLength+1, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End Of CAN Bus Functions
@@ -522,8 +520,14 @@ unsigned int GetPacingTimeFromMemory() {
   //     EEPROM.update(3, highByte(250));
   //     EEPROM.update(2, lowByte(250));
   //  }
-  return 250;
+  return 2500;
 }
+
+void UpdatePacingTime(int Data) {
+  EEPROM.update(2, highByte(Data));
+  EEPROM.update(3, lowByte(Data));
+}
+
 //----------------------------------------------------------------------------------------------------
 // End Of EEPROM Functions
 //----------------------------------------------------------------------------------------------------
@@ -572,8 +576,8 @@ void StatusResponse(int ChannelNumber) {
   if (ChannelNumber >= 0 && ChannelNumber <= MaxChannelNumber) {
 
     int ReturnedValue = SensorCode(ChannelNumber); // value returned will be an int for a fixed point number
-
-    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00, 0x00);
+    
+    CanBusSend(DeviceAddress, 4, 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), SensorType[ChannelNumber], 0x00, 0x00);
     SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
@@ -604,8 +608,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
     :return: None
     :rtype: None
   */
-  Serial.print("StreamingModeSet");
-  Serial.println(Data);
+
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
   } else {
@@ -766,7 +769,7 @@ void MinSensorChannelRange(int ReplyToAddress, int Channel) {
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
-//Enf Of Device Temp
+//End Of Device Temp
 //----------------------------------------------------------------------------------------------------
 
 
@@ -810,26 +813,11 @@ float ConvertPSItoKPa(float PSI) {
 }
 
 String FloatToIntFixed(double Data, int NumberOfDecimals) {
-  int Multipler = pow(10, NumberOfDecimals);
+  double Multipler = pow(10, NumberOfDecimals);
   return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
 }
 //----------------------------------------------------------------------------------------------------
-//Enf Of Sensor Helpers
-//----------------------------------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------------------------------
-//IO
-//----------------------------------------------------------------------------------------------------
-void IOSet(byte Idata, byte Odata) {
-
-}
-
-void IOGet() {
-
-}
-
-//----------------------------------------------------------------------------------------------------
-//Enf Of IO
+//End Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
@@ -851,23 +839,31 @@ int SensorCode(int ChannelNumber) {
 }
 
 int CurrentSensor(int ChannelNumber) {
+  /*
+  The sensor i'm using is Electronics-Salon Panel Mount AC/DC Current Sensor Module Board, Based on ACS758 (+/-150Amp) 
+  with the documents this thing has i'm wiring it per it's spec and polarity. I'm using the 5v based input that will 
+  Center the 0 amp output around Vcc/2 ~2.5v and depending on polarity will be either above or below 2.5 volts. 
+  If you're finding that your system is constantly "discharging" when you know the system is worrking correctly then
+  your options are to either flip the cases below or to flip the wiring on your sensor. 
+  */
+
   int DN = ReadAnalog(50, SensorPins[ChannelNumber]);
-  int Center = 511; //measure this from the device.
-  double AmpPermV = 0.013275; //get this from DataSheet for sensor
+  int Center = 509; //measure this from the device. should be around 511
+  double AmpPermV = 0.013275; //get this from DataSheet for sensor or do a bit of calibration yourself
   int DNAdjusted = 0;
   if (DN > Center) {
-    DNAdjusted = DN - Center; //positive case
+    DNAdjusted = (DN - Center) * (-1); //Negative Case
   }
   if (DN < Center) {
-    DNAdjusted = map(DN, Center, 0, 0, Center) * (-1); //negative case
+    DNAdjusted = map(DN, Center, 0, 0, Center); //Positive Case
   }
-  double Amps = ((DNAdjusted * 5) / 1023) / AmpPermV;
+  double Amps = (DNAdjusted * 0.00488758) / AmpPermV;
   return FloatToIntFixed(Amps, 1).toInt();
 }
 
 int PressureSensor(int ChannelNumber) {
-  float Pressure = 25 * (5 / 1023) * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5;
-  if (Pressure < 103) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear
+  float Pressure = 25.00 * 0.0048875 * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5; //PSI reading cause i work in freedom units
+  if (Pressure <= 0) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear anything less than 0.5volts zero PSI
     Pressure = 0;
   }
   if (UNITS == 'M') {
@@ -875,11 +871,6 @@ int PressureSensor(int ChannelNumber) {
   }
 
   return FloatToIntFixed(Pressure, 2).toInt();
-}
-
-int RTD(int ChannelNumber) {
-  float Temp = 99.123;
-  return FloatToIntFixed(Temp, 2).toInt();
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Specific Sensor Code
