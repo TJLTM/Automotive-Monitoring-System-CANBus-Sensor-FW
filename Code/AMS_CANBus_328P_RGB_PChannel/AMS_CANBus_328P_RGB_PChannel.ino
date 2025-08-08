@@ -28,6 +28,8 @@ long PacingTimer;
 #define MaxChannelNumber 3
 
 #define InputPin 4
+int InputReleased = 1;
+
 // Red, Green, Blue, Channel 4
 const int OutputPin[] = { 3, 5, 6, 10 };
 int CurrentColor[] = { 0, 0, 0, 0 };
@@ -86,25 +88,27 @@ void setup() {
   ComPort.print("Pacing:");
   ComPort.println(GetPacingTimeFromMemory());
 
+  pinMode(InputPin, INPUT);
+
   DiscoveryResponse();
 }
 
 void loop() {
   CANBusRecieveCheck();
+  CheckInputPinState();
 
   long CurrentTime = millis();
   if (GetStreamingFromMemory() == 1) {
     if (abs(PacingTimer - CurrentTime) > GetPacingTimeFromMemory()) {
       for (uint8_t i = 0; i <= MaxChannelNumber; i++) {
-        // this should read the input state on a timer 
+        // this should read the input state on a timer
         StatusResponse(i);
       }
       PacingTimer = CurrentTime;
     }
   }
 
-  if (RunFadeBetween == true){
-
+  if (RunFadeBetween == true) {
   }
 
   serialEvent();
@@ -328,6 +332,30 @@ void ResetError(int ReplyToAddress) {
 //----------------------------------------------------------------------------------------------------
 //End Of System related functions
 //----------------------------------------------------------------------------------------------------
+void CheckInputPinState() {
+  int reading = digitalRead(InputPin);
+  if (reading == HIGH) {
+    if (InputReleased == 1) {  //if input is high and Released Flag == 1
+      InputReleased = 0;       // set released flag to 0
+      ControlFromInput();
+    }
+  }
+  if (reading == LOW) {
+    if (InputReleased == 0) {
+      InputReleased = 1;  //Set Released flag to 1
+    }
+  }
+}
+
+void ControlFromInput() {
+  if (CurrentColor[0] == 0 && CurrentColor[1] == 0 && CurrentColor[2] == 0) {
+    //turn on everything to 60%
+    SetColor(153, 153, 153);
+  } else {
+    //turn off every color
+    SetColor(0, 0, 0);
+  }
+}
 
 //----------------------------------------------------------------------------------------------------
 //CAN Bus Functions
@@ -864,10 +892,9 @@ void FadeBetween(int StartRed, int StartGreen, int StartBlue, int EndRed, int En
   EndColor[2] = EndBlue;
   __ColorSet(StartRed, StartGreen, StartBlue);
   //figure out the steps between R, G & B per time interval
-  StepsPerColor[0] = (EndRed - StartRed)/FadeTime;
-  StepsPerColor[1] = (EndGreen - StartGreen)/FadeTime;
-  StepsPerColor[2] = (EndBlue - StartBlue)/FadeTime;
-  
+  StepsPerColor[0] = (EndRed - StartRed) / FadeTime;
+  StepsPerColor[1] = (EndGreen - StartGreen) / FadeTime;
+  StepsPerColor[2] = (EndBlue - StartBlue) / FadeTime;
 }
 
 void FadeTo(int Red, int Green, int Blue) {
@@ -875,11 +902,9 @@ void FadeTo(int Red, int Green, int Blue) {
 
 void SetFadeTime(int mS) {
   FadeTime = mS;
-
 }
 
 void GetFadeTime() {
-  
 }
 
 void SetPWM(int ChannelNumber, int PWM) {
@@ -891,8 +916,7 @@ void GetPWM(int ChannelNumber) {
   CanBusSend(DeviceAddress, 4, 0x0E, byte("R"), CurrentColor[0], CurrentColor[1], CurrentColor[2], 0x00, 0x00, 0x00);
 }
 
-void GetInputState(){
-
+void GetInputState() {
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Color
