@@ -917,6 +917,9 @@ void GetPWM(int ChannelNumber) {
 }
 
 void GetInputState() {
+  int reading = digitalRead(InputPin);
+  
+  
 }
 //----------------------------------------------------------------------------------------------------
 //End Of Color
