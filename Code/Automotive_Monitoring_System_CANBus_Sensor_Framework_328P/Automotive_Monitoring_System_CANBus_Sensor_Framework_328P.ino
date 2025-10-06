@@ -299,15 +299,6 @@ bool PacingValueCheck(int Value) {
   }
 }
 
-void SetError(int Number, int CommandNumber) {
-  ErrorNumber = Number;
-}
-
-void ResetError(int ReplyToAddress) {
-  ErrorNumber = 0;
-  GetError(ReplyToAddress);
-}
-
 int CalcAddress(int ReplyToAddress) {
   // converts the full packet identifier to the 0-254 int to put into the CAN Bus Packet
   int Subnet_Start = GetIdentifier() * 256;
@@ -413,7 +404,7 @@ void CANBusRecieveCheck() {
             GetError(CAN.getCanId());
           } else if (CommandType == 0x53) { // 0x53 == S
             if (cdata[3] == 0x0A && cdata[4] == 0x0A && cdata[5] == 0x0A && cdata[6] == 0xFF && cdata[7] == 0xFF) {
-              ResetErrorSet(CAN.getCanId());
+              ResetError(CAN.getCanId());
             }
           }
           break;
@@ -455,8 +446,8 @@ void CANBusRecieveCheck() {
           }
           break;
         default:
-          SetError(CAN.getCanId(),1,CommandNumber,true);
-        break;
+          SetError(CAN.getCanId(), 1, CommandNumber, true);
+          break;
       }
     }
   }
@@ -540,11 +531,11 @@ int GetStreamingFromMemory() {
 
 unsigned int GetPacingTimeFromMemory() {
   //Read Pacing value out of EEPROM
-    unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
-    if (Value > 250 && Value < 65535) {
-       EEPROM.update(3, highByte(250));
-       EEPROM.update(2, lowByte(250));
-    }
+  unsigned int Value = EEPROM.read(3) << 8 || EEPROM.read(2);
+  if (Value > 250 && Value < 65535) {
+    EEPROM.update(3, highByte(250));
+    EEPROM.update(2, lowByte(250));
+  }
   return Value;
 }
 //----------------------------------------------------------------------------------------------------
@@ -565,11 +556,11 @@ void DiscoveryResponse(int ReplyAddress) {
   CanBusSend(7, CalcAddress(ReplyAddress), 0x00, 0xFF, byte(DeviceType), byte(DeviceType), byte(DeviceType), unt_system, unt_system);
 }
 
-void SetError(int ReplyToAddress, int ErrorNum, int CommandNum, bool AutoReset){
+void SetError(int ReplyToAddress, int ErrorNum, int CommandNum, bool AutoReset) {
   ErrorNumber = ErrorNum;
   ErrorCommandNumber = CommandNum;
   GetError(ReplyToAddress);
-  if (AutoReset == true){
+  if (AutoReset == true) {
     ErrorNumber = 0;
     ErrorCommandNumber = 0;
   }
@@ -583,8 +574,8 @@ void GetError(int ReplyToAddress) {
   }
 }
 
-void ResetErrorSet(int ReplyToAddress) {
-  SetError(ReplyToAddress,0,0,false);
+void ResetError(int ReplyToAddress) {
+  SetError(ReplyToAddress, 0, 0, false);
 }
 
 void RebootDevice(int ReplyToAddress) {
@@ -628,7 +619,7 @@ void StreamingModeResponse(int ReplyToAddress) {
   if (ReplyToAddress != -1) {
     CanBusSend(3, CalcAddress(ReplyToAddress), 0x02, 0x52, byte(GetStreamingFromMemory()), 0x00, 0x00, 0x00, 0x00);
   } else {
-    SendSerial("StreamingMode:0x03:" + String(GetStreamingFromMemory()));
+    SendSerial("StreamingMode:0x02:" + String(GetStreamingFromMemory()));
   }
 }
 
@@ -643,8 +634,7 @@ void StreamingModeSet(int ReplyToAddress, int Data) {
   if (Data == 0 || Data == 1) {
     EEPROM.update(5, Data);
   } else {
-    Serial.print("Error");
-    //TODO fix error message
+    SetError(ReplyToAddress, 3, 2, true);
   }
   StreamingModeResponse(ReplyToAddress);
 }
@@ -656,7 +646,6 @@ void PacingResponse(int ReplyToAddress) {
     :return: None
     :rtype: None
   */
-  //TODO UPDATE
   if (ReplyToAddress != -1) {
     CanBusSend(6, CalcAddress(ReplyToAddress), 0x52, 0x03, highByte(GetPacingTimeFromMemory()), lowByte(GetPacingTimeFromMemory()), 0x00, 0x00, 0x00);
   } else {
@@ -672,12 +661,12 @@ void PacingSet(int ReplyToAddress, int Data) {
     :rtype: None
   */
 
-  //TODO UPDATE
+
   if (PacingValueCheck(Data) == true) {
     EEPROM.update(2, highByte(Data));
     EEPROM.update(3, lowByte(Data));
   } else {
-    //TODO add error response
+    SetError(ReplyToAddress, 3, 4, true);
   }
   PacingResponse(ReplyToAddress);
 }
@@ -689,12 +678,10 @@ void UnitsSystemResponse(int ReplyToAddress) {
     :return: None
     :rtype: None
   */
-  //TODO UPDATE
+
   if (ReplyToAddress != -1) {
     CanBusSend(4, CalcAddress(ReplyToAddress), 0x52, 0x05, byte(GetUnitSystemFromMemory()), 0x00, 0x00, 0x00, 0x00);
-  } else {
   }
-  // TODO add error response
   SendSerial("UnitsSystem:0x05:" + String(GetUnitSystemFromMemory()));
 }
 
@@ -705,23 +692,21 @@ void UnitsSystemSet(int ReplyToAddress, char Data) {
     :return: None
     :rtype: None
   */
-  //TODO UPDATE
   if (Data == 'I' || Data == 'M') {
     EEPROM.update(4, Data);
   } else {
-    //TODO add error response
+    SetError(ReplyToAddress, 3, 5, true);
   }
   UnitsSystemResponse(ReplyToAddress);
 }
 
 void UnitsABRResponse(int ReplyToAddress) {
   /*
-
       :param ReplyToAddress: reply address to put into the CAN packet header
       :type ReplyToAddress: int
       :return: None
       :rtype: None
-    */
+  */
   byte ABR = 0x00;
   switch (DeviceType) {
     case 1:  // Current
@@ -842,7 +827,7 @@ float NTCReadInC(int R2, float ResistenceRead) {
 
       int R2 == Calibrated static resistor used
       float ResistenceRead == Log() of the resistence value read
-    */
+  */
   float c1 = 1.009249522e-03;
   float c2 = 2.378405444e-04;
   float c3 = 2.019202697e-07;
@@ -860,12 +845,12 @@ float ConvertPSItoKPa(float PSI) {
   return KPA;
 }
 
-String FloatToIntFixed(double Data, int NumberOfDecimals) {
+int FloatToIntFixed(double Data, int NumberOfDecimals) {
   double Multipler = pow(10, NumberOfDecimals);
-  return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.'));
+  return String(round(Data * Multipler)).substring(0, String(round(Data * Multipler)).indexOf('.')).toInt();
 }
 //----------------------------------------------------------------------------------------------------
-//End Of Device Temp
+//End Of Sensor Helpers
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
@@ -888,7 +873,7 @@ int SensorCode(int ChannelNumber) {
   /*
       Read Sensor Value here for that channel
       convert that to fixed point value as an INT and return it.
-    */
+  */
 
   int Value = ChannelNumber;
 
