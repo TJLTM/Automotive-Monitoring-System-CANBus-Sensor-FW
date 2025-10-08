@@ -11,8 +11,10 @@ byte cdata[MAX_DATA_SIZE] = { 0 };
 String inputString = "";      // a String to hold incoming data
 bool stringComplete = false;  // whether the string is complete
 
-int TargetDeviceAddress = 100;
-int ThisDeviceAddress = 1543;
+int DeviceSubnet = 0;
+int TargetDeviceAddress = (DeviceSubnet * 256) + 100;
+int Address = 1;
+int ThisDeviceAddress = (DeviceSubnet * 256) + Address;
 
 void setup() {
   // put your setup code here, to run once:
@@ -20,8 +22,13 @@ void setup() {
   while (!Serial)
     ;
   inputString.reserve(200);
-
   CANBusSetup();
+
+  for (int i = 0; i <= 15; i++) {
+    SendSomething(i);
+    delay(2000);
+    CANBusRecieveCheck();
+  }
 }
 
 void CANBusSetup() {
@@ -42,110 +49,122 @@ void CANBusSetup() {
 }
 
 void loop() {
-  CANBusRecieveCheck();
-  delay(1000);
-  SendSomething("1");
-  delay(1000);
+  //do nothin over and over
 }
 
-
-
-void Old(){
-  // try to parse packet
-
-  if (stringComplete) {
-    
-    SendSomething(inputString);
-    // clear the string:
-    inputString = "";
-    stringComplete = false;
-    Serial.println("Send which command? \n 0. Discovery\n 1. ");
-  }
+int ConvertTargetAddressToInt() {
+  return TargetDeviceAddress -  (DeviceSubnet * 256);
 }
 
-void SendSomething(String Command) {
-  Serial.print(highByte(ThisDeviceAddress),HEX);
-  Serial.println(lowByte(ThisDeviceAddress),HEX);
-  switch (Command.toInt()) {
+void SendSomething(int Test) {
+  switch (Test) {
     case 0:
       Serial.println("Discovery");
-      CanBusSend(ThisDeviceAddress, 8, highByte(ThisDeviceAddress),lowByte(ThisDeviceAddress),byte('?'),0x01,0x00,0xFF,0xFF,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x00, byte('?'), 0x00, 0xFF, 0x00, 0xFF, 0x00);
       break;
     case 1:
       Serial.println("Status");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x02,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x01, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 2:
-      Serial.println("Streaming Set 0");
-      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x03,0x00,0x00,0x00,0x00);
+      Serial.println("Streaming Set off");
+      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x02, byte('S'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 3:
-      Serial.println("Streaming Set 1");
-      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x03,0xFF,0x00,0x00,0x00);
+      Serial.println("Streaming Set on");
+      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x02, byte('S'), 0xFF, 0x00, 0x00, 0x00, 0x00);
       break;
     case 4:
       Serial.println("Streaming Query");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x03,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x02, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 5:
       Serial.println("Pacing Set 0");
-      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 6, ConvertTargetAddressToInt(), 0x03, byte('S'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 6:
       Serial.println("Pacing Set 1000");
-      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,highByte(1000),lowByte(1000),0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 6, ConvertTargetAddressToInt(), 0x03, byte('S'), highByte(1000), lowByte(1000), 0x00, 0x00, 0x00);
       break;
     case 7:
       Serial.println("Pacing Set 999999");
-      CanBusSend(ThisDeviceAddress, 6, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x04,highByte(999999),lowByte(999999),0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 6, ConvertTargetAddressToInt(), 0x03, byte('S'), highByte(999999), lowByte(999999), 0x00, 0x00, 0x00);
       break;
     case 8:
       Serial.println("Pacing Query");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x04,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x03, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 9:
       Serial.println("Unit System Set I");
-      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x05,byte('I'),0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x04, byte('S'), byte('I'), 0x00, 0x00, 0x00, 0x00);
       break;
     case 10:
       Serial.println("Unit System Set M");
-      CanBusSend(ThisDeviceAddress, 5, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x05,byte('M'),0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x04, byte('S'), byte('M'), 0x00, 0x00, 0x00, 0x00);
       break;
     case 11:
       Serial.println("Unit System Query");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x05,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x04, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 12:
-      Serial.println("Units");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x08,0x00,0x00,0x00,0x00);
+      Serial.println("Units ABR");
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x07, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 13:
       Serial.println("IO Query");
-      CanBusSend(ThisDeviceAddress, 4, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x06,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x05, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 14:
       Serial.println("IO Set Out1 to 1");
-      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x06,0b00000001,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x05, byte('S'), 0x00, 0b00000001, 0x00, 0x00, 0x00);
       break;
     case 15:
       Serial.println("IO Set Out1 to 0");
-      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x06,0b00000000,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x05, byte('S'), 0x00, 0b00000000, 0x00, 0x00, 0x00);
       break;
     case 16:
       Serial.println("Error State");
-      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('?'),0x07,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x08, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 17:
       Serial.println("Reset Error State");
-      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x07,0x00,0xFF,0xFF,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x08, byte('S'), 0x0A, 0x0A, 0xFA, 0xFF, 0x00);
       break;
     case 18:
+      Serial.println("DeviceTemp");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0A, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 19:
+      Serial.println("Max Sensor Channel");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0B, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 20:
+      Serial.println("Sensor Channel Range Max");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0C, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 21:
+      Serial.println("Sensor Channel Range Min");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0D, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 22:
+      Serial.println("Sensor Channel Range type");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0E, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 23:
+      Serial.println("RGB Color set");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0F, byte('S'), 0xFF, 0xFF, 0xFF, 0x00, 0x00);
+      break;
+    case 24:
+      Serial.println("RGB Color query");
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x0F, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      break;
+    case 25: //always put this at the end of the test
       Serial.println("Reboot Device");
-      CanBusSend(ThisDeviceAddress, 8, highByte(TargetDeviceAddress),lowByte(TargetDeviceAddress),byte('S'),0x10,0x00,0x00,0x00,0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x09, byte('S'), 0x0A, 0x0A, 0x0A, 0x0A, 0x0A);
       break;
     default:
-      Serial.print("Commmand: ");
-      Serial.print(Command);
+      Serial.print("Test: ");
+      Serial.print(Test);
       Serial.println(" is not supported");
       break;
   }
@@ -160,11 +179,11 @@ void CanBusSend(int PacketIdentifier, int DataLength, byte Zero, byte One, byte 
   for (uint8_t i = 0; i < DataLength; i++) {
     Serial.print(i);
     Serial.print(": ");
-    Serial.print(DataPacket[i],HEX);
+    Serial.print(DataPacket[i], HEX);
     Serial.print(",");
   }
   Serial.println();
-  
+
   CAN.sendMsgBuf(PacketIdentifier, 0, DataLength, DataPacket);
 }
 
@@ -195,7 +214,7 @@ void CANBusRecieveCheck() {
   for (uint8_t i = 1; i < 8; i++) {
     Serial.print(i);
     Serial.print(": ");
-    Serial.print(cdata[i],HEX);
+    Serial.print(cdata[i], HEX);
     Serial.print(",");
   }
   Serial.println();
