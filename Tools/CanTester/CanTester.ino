@@ -13,7 +13,7 @@ bool stringComplete = false;  // whether the string is complete
 
 int DeviceSubnet = 0;
 int TargetDeviceAddress = (DeviceSubnet * 256) + 100;
-int Address = 1;
+int Address = 0x88;
 int ThisDeviceAddress = (DeviceSubnet * 256) + Address;
 
 void setup() {
@@ -24,11 +24,7 @@ void setup() {
   inputString.reserve(200);
   CANBusSetup();
 
-  for (int i = 0; i <= 15; i++) {
-    SendSomething(i);
-    delay(2000);
-    CANBusRecieveCheck();
-  }
+  //RunThroughItOnce();
 }
 
 void CANBusSetup() {
@@ -50,6 +46,35 @@ void CANBusSetup() {
 
 void loop() {
   //do nothin over and over
+  loopingTest();
+}
+
+void loopingTest(){
+  SendSomething(20);
+  delay(500);
+  CANBusRecieveCheck();
+  delay(2500);
+
+
+  SendSomething(21);
+  delay(500);
+  CANBusRecieveCheck();
+  delay(2500);
+
+
+  SendSomething(22);
+  delay(500);
+  CANBusRecieveCheck();
+  delay(2500);
+}
+
+void RunThroughItOnce() {
+  for (int i = 0; i <= 26; i++) {
+    SendSomething(i);
+    delay(500);
+    CANBusRecieveCheck();
+    delay(2500);
+  }
 }
 
 int ConvertTargetAddressToInt() {
@@ -72,7 +97,7 @@ void SendSomething(int Test) {
       break;
     case 3:
       Serial.println("Streaming Set on");
-      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x02, byte('S'), 0xFF, 0x00, 0x00, 0x00, 0x00);
+      CanBusSend(ThisDeviceAddress, 5, ConvertTargetAddressToInt(), 0x02, byte('S'), 0x01, 0x00, 0x00, 0x00, 0x00);
       break;
     case 4:
       Serial.println("Streaming Query");
@@ -108,7 +133,7 @@ void SendSomething(int Test) {
       break;
     case 12:
       Serial.println("Units ABR");
-      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x07, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      CanBusSend(ThisDeviceAddress, 4, ConvertTargetAddressToInt(), 0x07, byte('?'), 0x01, 0x00, 0x00, 0x00, 0x00);
       break;
     case 13:
       Serial.println("IO Query");
@@ -124,11 +149,11 @@ void SendSomething(int Test) {
       break;
     case 16:
       Serial.println("Error State");
-      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x08, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x06, byte('?'), 0x00, 0x00, 0x00, 0x00, 0x00);
       break;
     case 17:
       Serial.println("Reset Error State");
-      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x08, byte('S'), 0x0A, 0x0A, 0xFA, 0xFF, 0x00);
+      CanBusSend(ThisDeviceAddress, 8, ConvertTargetAddressToInt(), 0x06, byte('S'), 0x0A, 0x0A, 0x0A, 0xFF, 0xFF);
       break;
     case 18:
       Serial.println("DeviceTemp");
@@ -211,11 +236,11 @@ void CANBusRecieveCheck() {
   Serial.print("got some CAN Data:ID:");
   Serial.print(CAN.getCanId());
   Serial.print(" Data:");
-  for (uint8_t i = 1; i < 8; i++) {
+  for (uint8_t i = 0; i < 8; i++) {
     Serial.print(i);
-    Serial.print(": ");
+    Serial.print(":");
     Serial.print(cdata[i], HEX);
-    Serial.print(",");
+    Serial.print(" , ");
   }
   Serial.println();
 }
