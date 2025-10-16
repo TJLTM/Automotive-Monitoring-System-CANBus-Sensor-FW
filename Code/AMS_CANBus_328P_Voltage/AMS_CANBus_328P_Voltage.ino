@@ -903,6 +903,14 @@ int CurrentSensor(int ChannelNumber) {
   return FloatToIntFixed(Amps, 1);
 }
 
+int VoltageSensor(int ChannelNumber){
+  /*
+   * returns the 0-5 volt read off of the ADC if you need this scaled then you have to put that in yourself
+   */
+  float Vol = ReadAnalog(50, SensorPins[ChannelNumber]);
+  return FloatToIntFixed(Voltage, 2);
+}
+
 int PressureSensor(int ChannelNumber) {
   float Pressure = 25.00 * 0.0048875 * ReadAnalog(50, SensorPins[ChannelNumber]) - 12.5; //PSI reading cause i work in freedom units
   if (Pressure <= 0) { // this value check is for where the senssor is giving a voltage but it is technically zero cause it's *mostly linear anything less than 0.5volts zero PSI
