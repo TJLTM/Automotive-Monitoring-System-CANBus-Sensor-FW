@@ -14,9 +14,9 @@ long PacingTimer;
 #define DeviceType 3
 #define MaxChannelNumber 3
 const int SensorPins[] = {A1, A2, A3, A4};
-const int SensorType[] = {4, 4, 4, 1};
+const int SensorType[] = {4, 4, 3, 1};
 const int SensorMin[] = {0, 0, 0, -150};
-const int SensorMax[] = {150, 150, 150, 150};
+const int SensorMax[] = {150, 150, 18, 150};
 uint8_t ErrorNumber = 0;
 uint8_t ErrorCommandNumber = 0;
 char UNITS = 'I';
@@ -595,9 +595,9 @@ void StatusResponse(int ChannelNumber, int ReplyToAddress) {
 
     int ReturnedValue = SensorCode(ChannelNumber);
 
-    CanBusSend(CalcAddress(ReplyToAddress), 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType), 0x00, 0x00);
+    CanBusSend(CalcAddress(ReplyToAddress), 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00);
 
-    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(DeviceType));
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
     SetError(ReplyToAddress, 3, 0, true);
@@ -871,10 +871,12 @@ int SensorCode(int ChannelNumber) {
     convert that to fixed point value as an INT and return it.
   */
   int Value = 0;
-  if (ChannelNumber < 3) {
+  if (ChannelNumber < 2) {
     Value = PressureSensor(ChannelNumber);
-  } else {
-    Value = CurrentSensor(ChannelNumber);
+  } else if (ChannelNumber == 3) {
+    Value = CurrentSensor(3);
+  } else if (ChannelNumber == 2) {
+    Value = VoltageSensor(2);
   }
 
   return Value;
@@ -907,7 +909,7 @@ int VoltageSensor(int ChannelNumber){
   /*
    * returns the 0-5 volt read off of the ADC if you need this scaled then you have to put that in yourself
    */
-  float Vol = ReadAnalog(50, SensorPins[ChannelNumber]);
+  float Voltage = ReadAnalog(50, SensorPins[ChannelNumber]);
   return FloatToIntFixed(Voltage, 2);
 }
 
