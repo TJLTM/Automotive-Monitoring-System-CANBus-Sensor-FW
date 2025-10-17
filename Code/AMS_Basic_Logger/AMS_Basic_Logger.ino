@@ -86,12 +86,7 @@ void CANBusRecieveCheck() {
 
 
   int ID = CAN.getCanId();
-  int CommandNumber = cdata[0];
-  int OtherData = cdata[1];
-  //  Serial.print("CommandNumber:");
-  //  Serial.print(CommandNumber);
-  //  Serial.print("  ::OtherData:");
-  //  Serial.println(OtherData);
+  int CommandNumber = cdata[1];
   switch (CommandNumber) {
     case 1:  //State
       SensorParsing(ID, cdata[2], cdata[5], cdata[3], cdata[4]);
@@ -112,7 +107,7 @@ void CANBusRecieveCheck() {
 //Parsing Functions
 //----------------------------------------------------------------------------------------------------
 void SensorParsing(int ID, int ChannelNumber,int DeviceType, int UpperValue, int LowerValue ) {
-  String Message = "SensorParsing," + String(ID);
+  String Message = "Sensor," + String(ID);
   int Value = UpperValue << 8 | LowerValue;
   switch (DeviceType) {
     case 1:  //Current
