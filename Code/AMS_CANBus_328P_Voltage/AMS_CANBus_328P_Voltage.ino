@@ -595,9 +595,9 @@ void StatusResponse(int ChannelNumber, int ReplyToAddress) {
 
     int ReturnedValue = SensorCode(ChannelNumber);
 
-    CanBusSend(CalcAddress(ReplyToAddress), 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(DeviceType), 0x00, 0x00);
+    CanBusSend(CalcAddress(ReplyToAddress), 0x01, byte(ChannelNumber), highByte(ReturnedValue), lowByte(ReturnedValue), byte(SensorType[ChannelNumber]), 0x00, 0x00);
 
-    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(DeviceType));
+    SendSerial("StatusResponse:0x01:" + String(ChannelNumber) + ":" + String(ReturnedValue) + ":" + String(SensorType[ChannelNumber]));
   } else {
     // return error that channel doesn't exist
     SetError(ReplyToAddress, 3, 0, true);
