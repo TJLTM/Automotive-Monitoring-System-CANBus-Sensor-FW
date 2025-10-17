@@ -125,16 +125,16 @@ void SensorParsing(int ID, int ChannelNumber, int DeviceType, int UpperValue, in
       Message += ",Votlage," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 4:  //Pressure
-      Message += ",Pressure," + String(ChannelNumber) + "," + String(double(Value) / 100.0);
+      Message += ",Pressure," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 5:  //Vacuum
-      Message += ",Vacuum," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
+      Message += ",Vacuum," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 6:  //IO
-      Message += ",IO," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
+      Message += ",IO," + String(ChannelNumber) + "," + String(Value);
       break;
     case 7:  //RPM
-      Message += ",RPM," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
+      Message += ",RPM," + String(ChannelNumber) + "," + String(Value);
       break;
     default:
       Message += "," + String(ChannelNumber) + "," + String(DeviceType) + "," + String(Value) + ",Not Supported";
