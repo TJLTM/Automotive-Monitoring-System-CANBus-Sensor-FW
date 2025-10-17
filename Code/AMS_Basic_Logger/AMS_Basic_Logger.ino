@@ -2,17 +2,6 @@
 #include <SPI.h>
 #include <SD.h>
 
-//CAN_2515 or CAN_2518FD
-// #include "mcp2518fd_can.h"
-// mcp2518fd CAN(SPI_CS_PIN);  // Set CS pin
-// // To TEST MCP2518FD CAN2.0 data transfer
-// #define MAX_DATA_SIZE 8
-// // To TEST MCP2518FD CANFD data transfer, uncomment below lines
-// // #define MAX_DATA_SIZE 64
-
-// #include "mcp2515_can.h"
-// mcp2515_can CAN(SPI_CS_PIN);
-
 // CANBus
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
@@ -105,7 +94,7 @@ void CANBusRecieveCheck() {
   //  Serial.println(OtherData);
   switch (CommandNumber) {
     case 1:  //State
-      SensorParsing(ID, cdata[1], cdata[2] << 8 | cdata[3], cdata[4]);
+      SensorParsing(ID, cdata[2], cdata[5], cdata[3], cdata[4]);
       break;
     default:
       String Message = "Raw CANBus," + String(ID) + ",";
@@ -122,8 +111,9 @@ void CANBusRecieveCheck() {
 //----------------------------------------------------------------------------------------------------
 //Parsing Functions
 //----------------------------------------------------------------------------------------------------
-void SensorParsing(int ID, int ChannelNumber, int Value, int DeviceType) {
+void SensorParsing(int ID, int ChannelNumber,int DeviceType, int UpperValue, int LowerValue ) {
   String Message = "SensorParsing," + String(ID);
+  int Value = UpperValue << 8 | LowerValue;
   switch (DeviceType) {
     case 1:  //Current
       Message += ",Current," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
@@ -132,7 +122,7 @@ void SensorParsing(int ID, int ChannelNumber, int Value, int DeviceType) {
       Message += ",Temperature," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 3:  //Votlage
-      Message += ",Votlage," + String(ChannelNumber) + "," + String(DeviceType) + ",Not Supported";
+      Message += ",Votlage," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
       break;
     case 4:  //Pressure
       Message += ",Pressure," + String(ChannelNumber) + "," + String(double(Value) / 100.0);
