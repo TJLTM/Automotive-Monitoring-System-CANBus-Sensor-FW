@@ -1,17 +1,17 @@
 #include <EEPROM.h>
 #include <SPI.h>
 #include <SD.h>
+#include "RTClib.h"
 
 // CANBus
 #include "mcp2515_can.h"
 mcp2515_can CAN(9);
 #define MAX_DATA_SIZE 8
 int DeviceAddress = 1;
-//uint32_t id;
-//uint8_t type;  // bit0: ext, bit1: rtr
-//const uint8_t len;
 byte cdata[MAX_DATA_SIZE] = { 0 };
 
+RTC_DS3231 rtc;
+int TimeStamps = 0;
 
 #define ComPort Serial
 #define SDCS 4
@@ -20,6 +20,12 @@ File logfile;
 void setup() {
   ComPort.begin(115200);
   ComPort.println("Starting up...");
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC - No TimeStamps");
+    TimeStamps = 0;
+  } else {
+    TimeStamps = 1;
+  }
   CANBusSetup();
   SetupSDCard();
   ComPort.println("Finished Loading");
@@ -84,14 +90,8 @@ void CANBusRecieveCheck() {
   // }
   // Serial.println();
 
-
   int ID = CAN.getCanId();
-  int CommandNumber = cdata[0];
-  int OtherData = cdata[1];
-  //  Serial.print("CommandNumber:");
-  //  Serial.print(CommandNumber);
-  //  Serial.print("  ::OtherData:");
-  //  Serial.println(OtherData);
+  int CommandNumber = cdata[1];
   switch (CommandNumber) {
     case 1:  //State
       SensorParsing(ID, cdata[2], cdata[5], cdata[3], cdata[4]);
@@ -111,8 +111,8 @@ void CANBusRecieveCheck() {
 //----------------------------------------------------------------------------------------------------
 //Parsing Functions
 //----------------------------------------------------------------------------------------------------
-void SensorParsing(int ID, int ChannelNumber,int DeviceType, int UpperValue, int LowerValue ) {
-  String Message = "SensorParsing," + String(ID);
+void SensorParsing(int ID, int ChannelNumber, int DeviceType, int UpperValue, int LowerValue ) {
+  String Message = "Sensor," + String(ID);
   int Value = UpperValue << 8 | LowerValue;
   switch (DeviceType) {
     case 1:  //Current
@@ -147,6 +147,14 @@ void SensorParsing(int ID, int ChannelNumber,int DeviceType, int UpperValue, int
 //----------------------------------------------------------------------------------------------------
 //End of Parsing Functions
 //----------------------------------------------------------------------------------------------------
+
+String GetCurrentTime() {
+  DateTime now = rtc.now();
+  char buf1[20];
+  sprintf(buf1, "%02d:%02d:%02d-%02d/%02d/%02d",  now.hour(), now.minute(), now.second(), now.day(), now.month(), now.year());
+  return buf1;
+}
+
 //----------------------------------------------------------------------------------------------------
 //Logging and Output Functions
 //----------------------------------------------------------------------------------------------------
@@ -181,20 +189,26 @@ void SetupSDCard() {
   }
 }
 
-void FileSizeCheck(){
+void FileSizeCheck() {
 
-  if(logfile.size() > 5242880 ){ // 5MB in bytes
+  if (logfile.size() > 5242880 ) { // 5MB in bytes
     logfile.close();
     SetupSDCard();
   }
 }
 
 void OutputAndMaybeLogIt(String Data) {
-  logfile.println(Data);
-  logfile.flush();
-  FileSizeCheck();
-
-  ComPort.println(Data);
+  if (TimeStamps == 1) {
+    logfile.println(Data + "," + GetCurrentTime());
+    logfile.flush();
+    FileSizeCheck();
+    ComPort.println(Data + "," + GetCurrentTime());
+  } else {
+    logfile.println(Data);
+    logfile.flush();
+    FileSizeCheck();
+    ComPort.println(Data);
+  }
 }
 //----------------------------------------------------------------------------------------------------
 //End of Logging and Output Functions
