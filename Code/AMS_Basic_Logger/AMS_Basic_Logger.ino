@@ -14,18 +14,15 @@ RTC_DS3231 rtc;
 int TimeStamps = 0;
 
 #define ComPort Serial
+String inputString = "";  // a String to hold incoming data from ports
 #define SDCS 4
 File logfile;
 
 void setup() {
   ComPort.begin(115200);
   ComPort.println("Starting up...");
-  if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC - No TimeStamps");
-    TimeStamps = 0;
-  } else {
-    TimeStamps = 1;
-  }
+  rtc.begin();
+
   CANBusSetup();
   SetupSDCard();
   ComPort.println("Finished Loading");
@@ -33,6 +30,17 @@ void setup() {
 
 void loop() {
   CANBusRecieveCheck();
+  serialEvent();
+}
+
+void serialEvent() {
+  while (ComPort.available()) {
+    char inChar = (char)ComPort.read();
+    inputString += inChar;
+    if (inChar == '\r') {
+      //PainlessInstructionSet(inputString);
+    }
+  }
 }
 
 
@@ -104,6 +112,11 @@ void CANBusRecieveCheck() {
       OutputAndMaybeLogIt(Message);
       break;
   }
+}
+
+void CanBusSend(byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
+  byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
+  CAN.sendMsgBuf(PacketIdentifier, 0, 8, DataPacket);
 }
 //----------------------------------------------------------------------------------------------------
 //End of CAN Bus Functions
