@@ -86,17 +86,17 @@ void CANBusRecieveCheck() {
   */
 
 
-  // Serial.print("got some CAN Data:ID:");
-  // Serial.print(CAN.getCanId());
-
-  // Serial.print(" Data:");
-  // for (uint8_t i = 0; i < 8; i++) {
-  //   Serial.print(i);
-  //   Serial.print(": ");
-  //   Serial.print(cdata[i], HEX);
-  //   Serial.print(",");
-  // }
-  // Serial.println();
+//  Serial.print("got some CAN Data:ID:");
+//  Serial.print(CAN.getCanId());
+//
+//  Serial.print(" Data:");
+//  for (uint8_t i = 0; i < 8; i++) {
+//    Serial.print(i);
+//    Serial.print(": ");
+//    Serial.print(cdata[i], HEX);
+//    Serial.print(",");
+//  }
+//  Serial.println();
 
   int ID = CAN.getCanId();
   int CommandNumber = cdata[1];
@@ -114,10 +114,10 @@ void CANBusRecieveCheck() {
   }
 }
 
-void CanBusSend(byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
-  byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
-  CAN.sendMsgBuf(PacketIdentifier, 0, 8, DataPacket);
-}
+//void CanBusSend(byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
+//  byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
+//  CAN.sendMsgBuf(PacketIdentifier, 0, 8, DataPacket);
+//}
 //----------------------------------------------------------------------------------------------------
 //End of CAN Bus Functions
 //----------------------------------------------------------------------------------------------------
@@ -127,6 +127,7 @@ void CanBusSend(byte Zero, byte One, byte Two, byte Three, byte Four, byte Five,
 void SensorParsing(int ID, int ChannelNumber, int DeviceType, int UpperValue, int LowerValue ) {
   String Message = "Sensor," + String(ID);
   int Value = UpperValue << 8 | LowerValue;
+
   switch (DeviceType) {
     case 1:  //Current
       Message += ",Current," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
