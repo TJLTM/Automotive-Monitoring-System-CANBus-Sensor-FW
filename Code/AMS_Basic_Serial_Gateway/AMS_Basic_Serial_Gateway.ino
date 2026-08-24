@@ -1,0 +1,148 @@
+#include <EEPROM.h>
+#include <SPI.h>
+
+// CANBus
+#include "mcp2515_can.h"
+mcp2515_can CAN(9);
+#define MAX_DATA_SIZE 8
+int DeviceAddress = 1;
+byte cdata[MAX_DATA_SIZE] = { 0 };
+unsigned long SequenceNumber = 0; 
+
+#define ComPort Serial
+String inputString = "";  // a String to hold incoming data from ports
+
+void setup() {
+  ComPort.begin(115200);
+  ComPort.println("Starting up...");
+  CANBusSetup();
+  ComPort.println("Finished Loading");
+}
+
+void loop() {
+  CANBusRecieveCheck();
+  serialEvent();
+}
+
+void serialEvent() {
+  while (ComPort.available()) {
+    char inChar = (char)ComPort.read();
+    inputString += inChar;
+    if (inChar == '\r') {
+      //PainlessInstructionSet(inputString);
+    }
+  }
+}
+
+int SequenceNumberRollOver(){
+  SequenceNumber += 1;
+  if (SequenceNumber >= 4294967295){
+    SequenceNumber = 0;  
+  }
+  return SequenceNumber;   
+}
+
+//----------------------------------------------------------------------------------------------------
+//CAN Bus Functions
+//----------------------------------------------------------------------------------------------------
+void CANBusSetup() {
+#if MAX_DATA_SIZE > 8
+  /*
+        To compatible with MCP2515 API,
+        default mode is CAN_CLASSIC_MODE
+        Now set to CANFD mode.
+  */
+  CAN.setMode(CAN_NORMAL_MODE);
+#endif
+
+  while (CAN_OK != CAN.begin(CAN_500KBPS)) {  // init can bus : baudrate = 500k
+    ComPort.println("CAN init fail, retrying. This is unlikely to recover");
+    delay(1000);
+  }
+  ComPort.println("CAN init ok!");
+}
+
+void CANBusRecieveCheck() {
+  // check if data coming
+  if (CAN_MSGAVAIL != CAN.checkReceive()) {
+    return;
+  }
+
+  CAN.readMsgBuf(8, cdata);
+
+  //type = (CAN.isExtendedFrame() << 0) | (CAN.isRemoteRequest() << 1);
+  /*
+       MCP2515(or this driver) could not handle properly
+       the data carried by remote frame
+
+       Displayed type:
+
+       0x00: standard data frame
+       0x02: extended data frame
+       0x30: standard remote frame
+       0x32: extended remote frame
+  */
+
+  int ID = CAN.getCanId();
+  int CommandNumber = cdata[1];
+  switch (CommandNumber) {
+    case 1:  //State
+      SensorParsing(ID, cdata[2], cdata[5], cdata[3], cdata[4]);
+      break;
+    default:
+      String Message = "Raw CANBus," + String(ID) + ",";
+      for (uint8_t i = 0; i < 8; i++) {
+        Message += String(cdata[i]);
+      }
+      Serial.println(Message);
+      break;
+  }
+}
+
+//void CanBusSend(byte Zero, byte One, byte Two, byte Three, byte Four, byte Five, byte Six, byte Seven) {
+//  byte DataPacket[8] = { Zero, One, Two, Three, Four, Five, Six, Seven };  //construct data packet array
+//  CAN.sendMsgBuf(PacketIdentifier, 0, 8, DataPacket);
+//}
+//----------------------------------------------------------------------------------------------------
+//End of CAN Bus Functions
+//----------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------
+//Parsing Functions
+//----------------------------------------------------------------------------------------------------
+void SensorParsing(int ID, int ChannelNumber, int DeviceType, int UpperValue, int LowerValue ) {
+  String Message = "Sensor," + String(ID);
+  int Value = UpperValue << 8 | LowerValue;
+
+  switch (DeviceType) {
+    case 1:  //Current
+      Message += ",Current," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
+      break;
+    case 2:  //Temp
+      Message += ",Temperature," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
+      break;
+    case 3:  //Votlage
+      Message += ",Votlage," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
+      break;
+    case 4:  //Pressure
+      Message += ",Pressure," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
+      break;
+    case 5:  //Vacuum
+      Message += ",Vacuum," + String(ChannelNumber) + "," + String(double(Value) / 10.0);
+      break;
+    case 6:  //IO
+      Message += ",IO," + String(ChannelNumber) + "," + String(Value);
+      break;
+    case 7:  //RPM
+      Message += ",RPM," + String(ChannelNumber) + "," + String(Value);
+      break;
+    default:
+      Message += "," + String(ChannelNumber) + "," + String(DeviceType) + "," + String(Value) + ",Not Supported";
+      break;
+  }
+  
+  String OutputString = String(SequenceNumberRollOver()) + "," + Message;
+  Serial.println(OutputString);
+}
+//----------------------------------------------------------------------------------------------------
+//End of Parsing Functions
+//----------------------------------------------------------------------------------------------------
